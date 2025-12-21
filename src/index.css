@@ -1,0 +1,281 @@
+/* Intersect - Custom fonts bundled */
+
+/* Logo font - PP Neue Machina Inktrap Ultrabold */
+@font-face {
+  font-family: 'PP Neue Machina';
+  src: url('./assets/fonts/PPNeueMachina-InktrapUltrabold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Header font - PP Neue Montreal */
+@font-face {
+  font-family: 'PP Neue Montreal';
+  src: url('./assets/fonts/PPNeueMontreal-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'PP Neue Montreal';
+  src: url('./assets/fonts/PPNeueMontreal-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Body font - PP Neue Montreal Mono */
+@font-face {
+  font-family: 'PP Neue Montreal Mono';
+  src: url('./assets/fonts/PPNeueMontrealMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'PP Neue Montreal Mono';
+  src: url('./assets/fonts/PPNeueMontrealMono-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Agent voice font - PP NeueBit */
+@font-face {
+  font-family: 'PP NeueBit';
+  src: url('./assets/fonts/PPNeueBit-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'PP NeueBit';
+  src: url('./assets/fonts/PPNeueBit-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Theme variables */
+@theme {
+  --font-logo: 'PP Neue Machina', system-ui, sans-serif;
+  --font-sans: 'PP Neue Montreal', system-ui, sans-serif;
+  --font-mono: 'PP Neue Montreal Mono', 'JetBrains Mono', monospace;
+  --font-agent: 'PP NeueBit', 'PP Neue Montreal Mono', monospace;
+  
+  /* Dark palette - Apple-inspired luxury */
+  --color-void: #0C0C0E;
+  --color-obsidian: #121214;
+  --color-charcoal: #1C1C1F;
+  --color-slate: #252528;
+  --color-smoke: #38383D;
+  --color-ash: #6E6E76;
+  --color-silver: #A1A1A9;
+  --color-pearl: #D1D1D6;
+  --color-ivory: #F2F2F7;
+  
+  /* Golden accent */
+  --color-gold: #C9A227;
+  --color-gold-soft: #C9A22712;
+  --color-gold-glow: #C9A22725;
+  
+  /* Agent colors - Soft, sophisticated */
+  --color-instinct: #E07A5F;
+  --color-instinct-soft: #E07A5F0D;
+  --color-instinct-glow: #E07A5F20;
+  
+  --color-logic: #6BB8C9;
+  --color-logic-soft: #6BB8C90D;
+  --color-logic-glow: #6BB8C920;
+  
+  --color-psyche: #A78BCA;
+  --color-psyche-soft: #A78BCA0D;
+  --color-psyche-glow: #A78BCA20;
+  
+  /* Debate mode colors */
+  --color-debate-mild: #EAB308;
+  --color-debate-intense: #EF4444;
+  
+  /* Accent */
+  --color-aurora: #6BB8C9;
+}
+
+/* Base styles */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-mono);
+  background: var(--color-void);
+  color: var(--color-pearl);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Logo font */
+.font-logo {
+  font-family: var(--font-logo);
+}
+
+/* Header font */
+h1, h2, h3, h4, h5, h6, .font-header {
+  font-family: var(--font-sans);
+}
+
+/* Agent font */
+.font-agent {
+  font-family: var(--font-agent);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-smoke);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ash);
+}
+
+/* Tauri window drag region */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Selection */
+::selection {
+  background: var(--color-gold-soft);
+  color: var(--color-ivory);
+}
+
+/* Focus styles */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 1.5px solid var(--color-aurora);
+  outline-offset: 2px;
+}
+
+/* Remove focus outline from chat input */
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Logo gradient animation */
+@keyframes logo-color-fade {
+  0%, 100% { background-position: 0% 50%; }
+  25% { background-position: 33% 50%; }
+  50% { background-position: 66% 50%; }
+  75% { background-position: 100% 50%; }
+}
+
+.text-logo-gradient {
+  background: linear-gradient(
+    90deg,
+    var(--color-instinct) 0%,
+    var(--color-gold) 25%,
+    var(--color-psyche) 50%,
+    var(--color-logic) 75%,
+    var(--color-instinct) 100%
+  );
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: logo-color-fade 12s ease-in-out infinite;
+}
+
+/* Debate mode animations */
+@keyframes debate-pulse-mild {
+  0%, 100% { box-shadow: 0 0 0 2px var(--color-debate-mild); }
+  50% { box-shadow: 0 0 20px 4px var(--color-debate-mild); }
+}
+
+@keyframes debate-pulse-intense {
+  0%, 100% { box-shadow: 0 0 0 2px var(--color-debate-intense); }
+  50% { box-shadow: 0 0 25px 6px var(--color-debate-intense); }
+}
+
+.debate-mild {
+  animation: debate-pulse-mild 1.5s ease-in-out infinite;
+  border-color: var(--color-debate-mild) !important;
+}
+
+.debate-intense {
+  animation: debate-pulse-intense 1s ease-in-out infinite;
+  border-color: var(--color-debate-intense) !important;
+}
+
+/* General animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Background gradients */
+.bg-ai-gradient {
+  background: linear-gradient(135deg, var(--color-instinct), var(--color-gold), var(--color-psyche), var(--color-logic));
+}
+
+.bg-ai-mesh {
+  background: 
+    radial-gradient(ellipse at 10% 90%, var(--color-instinct-soft) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 10%, var(--color-logic-soft) 0%, transparent 40%),
+    radial-gradient(ellipse at 50% 50%, var(--color-gold-soft) 0%, transparent 45%),
+    radial-gradient(ellipse at 25% 25%, var(--color-psyche-soft) 0%, transparent 35%),
+    var(--color-void);
+}
+
+/* Agent-specific styles */
+.glow-instinct { box-shadow: 0 0 15px var(--color-instinct-glow); }
+.glow-logic { box-shadow: 0 0 15px var(--color-logic-glow); }
+.glow-psyche { box-shadow: 0 0 15px var(--color-psyche-glow); }
+
