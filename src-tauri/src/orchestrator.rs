@@ -1,4 +1,4 @@
-use crate::anthropic::{AnthropicClient, AnthropicMessage};
+use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_SONNET, CLAUDE_OPUS};
 use crate::db::{self, Message};
 use crate::disco_prompts::get_disco_prompt;
 use crate::knowledge::{INTERSECT_KNOWLEDGE, is_self_referential_query};
@@ -398,7 +398,7 @@ Respond with ONLY valid JSON:
             agents_list = agents_who_havent.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
         );
         
-        // Use Anthropic client for orchestration decisions (Claude Opus 4.5)
+        // Use Anthropic client for debate continuation (Sonnet, thinking low)
         let messages = vec![
             AnthropicMessage {
                 role: "user".to_string(),
@@ -406,11 +406,13 @@ Respond with ONLY valid JSON:
             },
         ];
         
-        let response = self.anthropic_client.chat_completion(
+        let response = self.anthropic_client.chat_completion_advanced(
+            CLAUDE_SONNET,
             Some(&system_prompt),
             messages,
             0.4,
-            Some(150)
+            Some(150),
+            ThinkingBudget::Low
         ).await?;
         
         let cleaned = response.trim().trim_start_matches("```json").trim_end_matches("```").trim();
@@ -481,7 +483,7 @@ Respond with ONLY valid JSON:
             user_message
         );
 
-        // Use Anthropic client for orchestration decisions (Claude Opus 4.5)
+        // Use Anthropic client for grounding decision (Sonnet, thinking medium)
         let messages = vec![
             AnthropicMessage {
                 role: "user".to_string(),
@@ -489,11 +491,13 @@ Respond with ONLY valid JSON:
             },
         ];
 
-        let response = self.anthropic_client.chat_completion(
+        let response = self.anthropic_client.chat_completion_advanced(
+            CLAUDE_SONNET,
             Some(system_prompt),
             messages,
             0.2,
-            Some(200)
+            Some(200),
+            ThinkingBudget::Medium
         ).await?;
         
         let cleaned = response
@@ -619,7 +623,8 @@ Respond with ONLY valid JSON:
         };
         
         // Use OpenAI client for agent responses (GPT-4o)
-        self.openai_client.chat_completion(messages, temperature, Some(1024)).await
+        // Max 300 tokens - enough for a substantive response but prevents rambling
+        self.openai_client.chat_completion(messages, temperature, Some(300)).await
     }
     
     /// Generate an agent's opening greeting for a new conversation
@@ -763,7 +768,7 @@ Your voice is: Thoughtful, probing, empathetic. You look beneath the surface. Yo
         ""
     };
     
-    format!("{}\n\n{}\n\nIMPORTANT: Never prefix your response with your name, labels, or tags like [INSTINCT]: or similar. Just respond directly. Be concise but substantive. Don't use emojis. Don't be sycophantic. Be genuine.{}", base_prompt, response_context, disco_suffix)
+    format!("{}\n\n{}\n\nIMPORTANT: Never prefix your response with your name, labels, or tags like [INSTINCT]: or similar. Just respond directly. Keep responses SHORT - typically 1-3 sentences, occasionally a short paragraph if truly needed. Don't ramble. Don't use emojis. Don't be sycophantic. Be genuine.{}", base_prompt, response_context, disco_suffix)
 }
 
 /// Get the system prompt for an agent with grounding context and optional self-knowledge
@@ -1015,7 +1020,7 @@ Be nuanced - most responses will have subtle engagement patterns, not extreme sc
             agent_context, user_message
         );
         
-        // Use Anthropic client for analysis (Claude Opus 4.5)
+        // Use Anthropic client for analysis (Opus, no thinking)
         let messages = vec![
             AnthropicMessage {
                 role: "user".to_string(),
@@ -1023,11 +1028,13 @@ Be nuanced - most responses will have subtle engagement patterns, not extreme sc
             },
         ];
         
-        let response = self.client.chat_completion(
+        let response = self.client.chat_completion_advanced(
+            CLAUDE_OPUS,
             Some(system_prompt),
             messages,
             0.3,
-            None
+            None,
+            ThinkingBudget::None
         ).await?;
         
         // Parse JSON response
@@ -1149,7 +1156,7 @@ Respond in this exact JSON format:
 
         let user_prompt = format!("USER MESSAGE:\n{}\n\nAnalyze trait signals:", user_message);
         
-        // Use Anthropic client for analysis (Claude Opus 4.5)
+        // Use Anthropic client for analysis (Opus, thinking medium)
         let messages = vec![
             AnthropicMessage {
                 role: "user".to_string(),
@@ -1157,11 +1164,13 @@ Respond in this exact JSON format:
             },
         ];
         
-        let response = self.client.chat_completion(
+        let response = self.client.chat_completion_advanced(
+            CLAUDE_OPUS,
             Some(system_prompt),
             messages,
             0.3,
-            None
+            None,
+            ThinkingBudget::Medium
         ).await?;
         
         // Parse JSON response

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ExternalLink, Star, Edit2, ChevronDown, Calendar } from 'lucide-react';
+import { ExternalLink, Star, Edit2, ChevronDown, Calendar, Key } from 'lucide-react';
 import { useAppStore } from '../store';
-import { AGENTS, USER_PROFILES } from '../constants/agents';
+import { AGENTS } from '../constants/agents';
 import { 
   getUserProfile, 
   getAllPersonaProfiles,
@@ -11,8 +11,17 @@ import {
   setActivePersonaProfile as setActivePersonaProfileBackend,
 } from '../hooks/useTauri';
 import { ApiKeyModal } from './ApiKeyModal';
-import bekLogo from '../assets/BEK.png';
 import governorTransparent from '../assets/governor-transparent.png';
+// Direct imports for radar chart images
+import instinctProfile from '../assets/agents/instinct.png';
+import logicProfile from '../assets/agents/logic.png';
+import psycheProfile from '../assets/agents/psyche.png';
+
+const PROFILE_IMAGES = {
+  instinct: instinctProfile,
+  logic: logicProfile,
+  psyche: psycheProfile,
+} as const;
 
 interface SettingsProps {
   isOpen: boolean;
@@ -221,7 +230,7 @@ function RadarChart({ weights, targetWeights }: { weights: { instinct: number; l
                 }}
               >
                 <img
-                  src={USER_PROFILES[id]}
+                  src={PROFILE_IMAGES[id]}
                   alt={AGENTS[id].name}
                   className="w-full h-full object-cover"
                 />
@@ -865,20 +874,24 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
             <div className="flex items-center justify-between px-4 py-3 border-t border-smoke/30 flex-shrink-0">
               <div className="flex items-center gap-1.5">
                 <img src={governorTransparent} alt="" className="w-4 h-4 opacity-60" />
-                <p className="text-xs text-ash/60 font-mono">Intersect v1.1.0</p>
+                <p className="text-xs text-ash/60 font-mono">Intersect v1.1.2</p>
               </div>
-              <a 
-                href="https://briggskellogg.com" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="block cursor-pointer"
-              >
-                <img 
-                  src={bekLogo} 
-                  alt="BEK" 
-                  className="h-[16px] w-auto opacity-40 hover:opacity-100 transition-opacity duration-200"
-                />
-              </a>
+              <div className="flex items-center gap-2">
+                {userProfile?.apiKey && (
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span className="text-[10px] text-emerald-500/80 font-mono">Connected</span>
+                  </span>
+                )}
+                <button
+                  onClick={() => setShowApiModal(true)}
+                  className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-ash/60 hover:text-pearl hover:bg-smoke/30 transition-colors cursor-pointer"
+                  title="Change API Key (⌘K)"
+                >
+                  <Key className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <kbd className="w-5 h-5 bg-smoke/30 rounded text-[9px] font-mono text-ash/50 border border-smoke/40 flex items-center justify-center">⌘K</kbd>
+                </button>
+              </div>
             </div>
           </motion.div>
 

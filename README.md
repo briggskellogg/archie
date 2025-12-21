@@ -24,7 +24,13 @@ Your data stays on your device. The agents learn your patterns over time.
 
 I built this for myself, but you can use it too.
 
-If you'd like to try it and don't know how to download it: **[me@briggskellogg.com](mailto:me@briggskellogg.com)**
+## Download
+
+**[Download Intersect v1.1 for macOS (Apple Silicon)](https://github.com/briggskellogg/intersect/releases/download/v1.1/Intersect_1.1_aarch64.dmg)**
+
+Requires macOS 12+ and Apple Silicon (M1/M2/M3). You'll need your own OpenAI and Anthropic API keys.
+
+Questions? **[me@briggskellogg.com](mailto:me@briggskellogg.com)**
 
 ---
 

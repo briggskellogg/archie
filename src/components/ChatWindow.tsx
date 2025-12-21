@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { MessageSquarePlus, Sparkles, ExternalLink, ShieldCheck } from 'lucide-react';
+import { MessageSquarePlus, Sparkles, ExternalLink, ShieldCheck, X, Minus, Square } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { DebateIndicator } from './DebateIndicator';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -16,7 +16,8 @@ import {
   getUserProfile,
 } from '../hooks/useTauri';
 import { v4 as uuidv4 } from 'uuid';
-import governorIcon from '../assets/governor-transparent.png';
+import governorIcon from '../assets/governor.png';
+import bekLogo from '../assets/BEK.png';
 import { GovernorNotification } from './GovernorNotification';
 
 interface ChatWindowProps {
@@ -91,41 +92,31 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
         const conv = await createConversation();
         setCurrentConversation(conv);
         
-        // Governor is choosing who should greet
+        // Governor is greeting the user
         setIsLoading(true);
-        setThinkingPhase('routing');
+        setThinkingPhase('thinking');
         setThinkingAgent('system'); // Governor thinking
-        
-        // Governor thinks for 3 seconds while choosing agent
-        await new Promise(r => setTimeout(r, 3000));
         
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:before-getOpener',message:'About to call getConversationOpener',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
         
-        // Get opener (backend chooses agent based on weights)
+        // Get Governor greeting
         const openerResult = await getConversationOpener();
         
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:after-getOpener',message:'getConversationOpener completed',data:{agent:openerResult.agent},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
         
-        // Now show the chosen agent thinking
-        setThinkingAgent(openerResult.agent as AgentType);
-        setThinkingPhase('thinking');
-        
-        // Agent thinks briefly before responding
-        await new Promise(r => setTimeout(r, 1500));
-        
-        const agentMessage: Message = {
+        const governorMessage: Message = {
           id: uuidv4(),
           conversationId: conv.id,
-          role: openerResult.agent as AgentType,
+          role: 'system', // Governor greeting
           content: openerResult.content,
           responseType: 'primary',
           timestamp: new Date(),
         };
-        addMessage(agentMessage);
+        addMessage(governorMessage);
         setIsLoading(false);
         setThinkingAgent(null);
       } catch (err) {
@@ -583,7 +574,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
       {/* Header - Clean, centered logo with space for macOS window controls */}
       {/* #region agent log */}
       <header 
-        className="flex items-center justify-between pl-20 pr-4 py-2 border-b border-smoke/30 bg-obsidian/80 backdrop-blur-md cursor-default"
+        className="flex items-center justify-between px-4 py-2 border-b border-smoke/30 bg-obsidian/80 backdrop-blur-md cursor-default"
         onMouseDown={async (e) => {
           const isButton = (e.target as HTMLElement).closest('button');
           fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:header',message:'Header mousedown',data:{isButton:!!isButton,target:(e.target as HTMLElement).tagName},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
@@ -597,8 +588,33 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
         }}
       >
       {/* #endregion */}
-        {/* Left controls - New Chat + Agent toggles */}
+        {/* Left controls - Window buttons + New Chat + Agents */}
         <div className="flex items-center gap-4">
+          {/* Custom window controls - always visible */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => getCurrentWindow().close()}
+              className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400 transition-colors cursor-pointer flex items-center justify-center group"
+              title="Close"
+            >
+              <X className="w-2 h-2 text-red-900 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
+            </button>
+            <button
+              onClick={() => getCurrentWindow().minimize()}
+              className="w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-400 transition-colors cursor-pointer flex items-center justify-center group"
+              title="Minimize"
+            >
+              <Minus className="w-2 h-2 text-yellow-900 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
+            </button>
+            <button
+              onClick={() => getCurrentWindow().toggleMaximize()}
+              className="w-3 h-3 rounded-full bg-green-500 hover:bg-green-400 transition-colors cursor-pointer flex items-center justify-center group"
+              title="Maximize"
+            >
+              <Square className="w-1.5 h-1.5 text-green-900 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
+            </button>
+          </div>
+
           {/* New conversation */}
           <button
             onClick={handleNewConversation}
@@ -610,7 +626,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
           </button>
           
           {/* Agent toggles */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {AGENT_ORDER.map((agentId) => {
               const agent = AGENTS[agentId];
               const mode = agentModes[agentId];
@@ -700,22 +716,39 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-2 justify-end">
+        <div className="flex items-center gap-3 justify-end">
           {/* Profile Switcher - opens profile modal */}
           <ProfileSwitcher onOpenProfileModal={onOpenSettings} />
           
           {/* Governor - opens report modal */}
           <button
             onClick={onOpenReport}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-smoke/20 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-smoke/20 transition-all cursor-pointer group/governor"
             title="The Governor (⌘R)"
           >
-            <img src={governorIcon} alt="Governor" className="w-5 h-5" />
-            {activeCount > 1 ? (
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            ) : (
-              <span className="w-1.5 h-1.5 rounded-full bg-ash/40" />
-            )}
+            {/* Governor icon - round with flashing yellow border when routing */}
+            <div className="relative w-6 h-6">
+              {/* Animated border ring - only this pulses */}
+              {activeCount > 1 && (
+                <div 
+                  className="absolute inset-[-2px] rounded-full"
+                  style={{ 
+                    border: '1.5px solid #EAB308',
+                    animation: 'border-pulse 2s ease-in-out infinite',
+                  }}
+                />
+              )}
+              {/* Static border when not routing */}
+              {activeCount <= 1 && (
+                <div 
+                  className="absolute inset-[-2px] rounded-full border border-ash/30"
+                />
+              )}
+              {/* Icon container */}
+              <div className="w-6 h-6 rounded-full overflow-hidden">
+                <img src={governorIcon} alt="Governor" className="w-full h-full object-cover" />
+              </div>
+            </div>
             <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘R</kbd>
           </button>
         </div>
@@ -755,7 +788,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
       </div>
 
       {/* Floating Input with Agent Toggles */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-3/4 max-w-5xl">
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-3/4 max-w-5xl">
         <div className="flex items-center gap-3">
           {/* Floating chat input */}
           <div className="flex-1 bg-charcoal/80 backdrop-blur-xl rounded-2xl border border-smoke/30 transition-all relative flex items-center shadow-2xl">
@@ -791,14 +824,14 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder=""
-              disabled={isLoading}
+              disabled={false}
               rows={1}
               className="w-full bg-transparent text-pearl font-mono text-sm pl-14 pr-20 py-3 resize-none outline-none border-none min-h-[48px] max-h-[120px]"
               style={{ boxShadow: 'none' }}
             />
             {/* Placeholder with styled slash */}
             {!inputValue && (
-              <div className="absolute left-14 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+              <div className="absolute left-16 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                 <span className="text-ash/40 font-mono text-sm">Press</span>
                 <kbd className="p-1 bg-smoke/30 rounded-md text-ash/60 font-mono text-xs border border-smoke/40 aspect-square flex items-center justify-center">/</kbd>
                 <span className="text-ash/40 font-mono text-sm">to chat</span>
@@ -872,6 +905,20 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
           </span>
         </div>
       </div>
+      
+      {/* BEK logo - absolute bottom right */}
+      <a 
+        href="https://briggskellogg.com" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="absolute bottom-3 right-4 cursor-pointer"
+      >
+        <img 
+          src={bekLogo} 
+          alt="BEK" 
+          className="h-[14px] w-auto opacity-30 hover:opacity-100 transition-opacity duration-200"
+        />
+      </a>
     </div>
   );
 }

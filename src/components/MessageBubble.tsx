@@ -150,8 +150,8 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
           }`}
           style={{ maxWidth: 'calc(75vw - 60px)' }}
         >
-          {/* Agent name tag - compact */}
-          {!isUser && !isSystem && agent && (
+          {/* Agent/Governor name tag - compact */}
+          {!isUser && agent && (
             <span 
               className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-medium mb-1.5"
               style={{ 
@@ -171,10 +171,10 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
               <>
                 <span className="whitespace-pre-wrap">{displayedText}</span>
                 <motion.span 
-                  className="inline-block ml-0.5 w-[2px] h-[14px] align-middle"
+                  className="inline-block ml-0.5 w-[1.5px] h-[1em] align-baseline rounded-full"
                   style={{ backgroundColor: agent?.color }}
-                  animate={{ opacity: [1, 0.3] }}
-                  transition={{ duration: 0.4, repeat: Infinity, ease: 'easeInOut' }}
+                  animate={{ opacity: [1, 0] }}
+                  transition={{ duration: 0.6, repeat: Infinity, ease: 'linear' }}
                 />
               </>
             ) : (

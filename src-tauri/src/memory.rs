@@ -7,7 +7,7 @@
 //! - Building a comprehensive user profile
 
 use crate::db::{self, UserFact, UserPattern, ConversationSummary, Message};
-use crate::openai::{ChatMessage, OpenAIClient};
+use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_OPUS};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -109,13 +109,13 @@ impl ContextWindow {
 // ============ Memory Extractor ============
 
 pub struct MemoryExtractor {
-    client: OpenAIClient,
+    client: AnthropicClient,
 }
 
 impl MemoryExtractor {
     pub fn new(api_key: &str) -> Self {
         Self {
-            client: OpenAIClient::new(api_key),
+            client: AnthropicClient::new(api_key),
         }
     }
     
@@ -188,18 +188,22 @@ Respond with ONLY valid JSON in this exact format:
             responses_text
         );
 
+        // Use Anthropic client for memory extraction (Opus, thinking high)
         let messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt.to_string(),
-            },
-            ChatMessage {
+            AnthropicMessage {
                 role: "user".to_string(),
                 content: user_prompt,
             },
         ];
 
-        let response = self.client.chat_completion(messages, 0.2, Some(800)).await?;
+        let response = self.client.chat_completion_advanced(
+            CLAUDE_OPUS,
+            Some(system_prompt),
+            messages,
+            0.2,
+            Some(800),
+            ThinkingBudget::High
+        ).await?;
         
         println!("[MEMORY] Got extraction response, length: {}", response.len());
         
@@ -396,13 +400,13 @@ Respond with ONLY valid JSON in this exact format:
 // ============ Conversation Summarizer ============
 
 pub struct ConversationSummarizer {
-    client: OpenAIClient,
+    client: AnthropicClient,
 }
 
 impl ConversationSummarizer {
     pub fn new(api_key: &str) -> Self {
         Self {
-            client: OpenAIClient::new(api_key),
+            client: AnthropicClient::new(api_key),
         }
     }
     
@@ -451,18 +455,22 @@ Respond with ONLY valid JSON:
   "user_state": "..." or null
 }"#;
 
+        // Use Anthropic client for summarization (Opus, thinking high)
         let api_messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt.to_string(),
-            },
-            ChatMessage {
+            AnthropicMessage {
                 role: "user".to_string(),
                 content: context,
             },
         ];
 
-        let response = self.client.chat_completion(api_messages, 0.3, Some(400)).await?;
+        let response = self.client.chat_completion_advanced(
+            CLAUDE_OPUS,
+            Some(system_prompt),
+            api_messages,
+            0.3,
+            Some(400),
+            ThinkingBudget::High
+        ).await?;
         
         let cleaned = response
             .trim()

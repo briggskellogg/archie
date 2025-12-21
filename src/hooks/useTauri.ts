@@ -304,6 +304,16 @@ export async function getUserProfileSummary(): Promise<string> {
   return invoke<string>('get_user_profile_summary');
 }
 
+// Governor Report (LLM-generated from knowledge base)
+export async function generateGovernorReport(profileId?: string): Promise<string> {
+  return invoke<string>('generate_governor_report', { profileId: profileId || null });
+}
+
+// 3-Sentence User Summary
+export async function generateUserSummary(): Promise<string> {
+  return invoke<string>('generate_user_summary');
+}
+
 // Reset
 export async function resetAllData(): Promise<void> {
   await invoke('reset_all_data');

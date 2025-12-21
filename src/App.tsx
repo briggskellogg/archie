@@ -96,7 +96,7 @@ function App() {
   // Loading screen
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-ai-mesh">
+      <div className="app-container flex items-center justify-center bg-ai-mesh">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -135,7 +135,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen bg-void">
+    <div className="app-container">
       {/* Chat window is always visible */}
       <ChatWindow 
         onOpenSettings={() => setSettingsOpen(true)} 

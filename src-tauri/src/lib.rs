@@ -176,21 +176,64 @@ pub struct ConversationOpenerResult {
 #[tauri::command]
 async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
     let profile = db::get_user_profile().map_err(|e| e.to_string())?;
-    let api_key = profile.api_key.ok_or("OpenAI API key not set")?;
     let anthropic_key = profile.anthropic_key.ok_or("Anthropic API key not set")?;
-    let weights = (profile.instinct_weight, profile.logic_weight, profile.psyche_weight);
     
     let recent = db::get_recent_conversations(5).map_err(|e| e.to_string())?;
     
-    // Choose opener agent based on weights with some randomness
-    let agent = choose_opener_agent(weights);
-    
-    let orchestrator = Orchestrator::new(&api_key, &anthropic_key);
-    let content = orchestrator.generate_conversation_opener(&recent, &agent)
+    // Governor greets the user (using Anthropic/Claude)
+    let content = generate_governor_greeting(&anthropic_key, &recent)
         .await
         .map_err(|e| e.to_string())?;
     
-    Ok(ConversationOpenerResult { agent, content })
+    Ok(ConversationOpenerResult { agent: "system".to_string(), content })
+}
+
+/// Generate a brief Governor greeting for a new conversation
+async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &[db::Conversation]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_SONNET};
+    
+    let context = if recent_conversations.is_empty() {
+        "This is the user's first conversation.".to_string()
+    } else {
+        let recent: Vec<String> = recent_conversations
+            .iter()
+            .take(2)
+            .filter_map(|c| c.title.as_ref())
+            .map(|t| format!("- {}", t))
+            .collect();
+        if recent.is_empty() {
+            "The user has chatted before but no specific topics.".to_string()
+        } else {
+            format!("Recent topics:\n{}", recent.join("\n"))
+        }
+    };
+    
+    let system_prompt = r#"You are the Governor, the orchestration layer of Intersect. You greet users at the start of new conversations.
+
+Rules:
+- Keep it VERY brief: 1 short sentence max
+- Don't be formal or robotic
+- If they've chatted before, maybe casually mention it ("Back for more?" or "Picking up where we left off?")
+- If new, just a simple "What's on your mind?" or similar
+- Never list out what they talked about - just acknowledge briefly if at all
+- You're not an assistant - you're a familiar presence"#;
+
+    let client = AnthropicClient::new(anthropic_key);
+    let messages = vec![
+        AnthropicMessage {
+            role: "user".to_string(),
+            content: context,
+        },
+    ];
+    
+    client.chat_completion_advanced(
+        CLAUDE_SONNET,
+        Some(system_prompt),
+        messages,
+        0.8,
+        Some(50), // Very brief
+        ThinkingBudget::None
+    ).await
 }
 
 // Choose which agent opens based on weights + randomness
@@ -669,7 +712,7 @@ async fn send_message(
     db::increment_message_count().map_err(|e| e.to_string())?;
     
     // ===== MEMORY SYSTEM: Extract Facts & Patterns (async, non-blocking) =====
-    let api_key_clone = api_key.clone();
+    let anthropic_key_clone = anthropic_key.clone();
     let user_message_clone = user_message.clone();
     let conversation_id_clone = conversation_id.clone();
     let responses_for_extraction: Vec<(String, String)> = responses
@@ -680,10 +723,10 @@ async fn send_message(
     
     println!("[MEMORY] Spawning extraction task...");
     
-    // Spawn memory extraction as a background task
+    // Spawn memory extraction as a background task (uses Anthropic Opus)
     tokio::spawn(async move {
         println!("[MEMORY] Extraction task started");
-        let extractor = MemoryExtractor::new(&api_key_clone);
+        let extractor = MemoryExtractor::new(&anthropic_key_clone);
         match extractor.extract_from_exchange(
             &user_message_clone,
             &responses_for_extraction,
@@ -699,13 +742,13 @@ async fn send_message(
     // ===== MEMORY SYSTEM: Summarize Conversation Periodically =====
     let message_count = profile.total_messages + 1;
     if message_count % 10 == 0 {
-        // Every 10 messages, update conversation summary
-        let api_key_for_summary = api_key.clone();
+        // Every 10 messages, update conversation summary (uses Anthropic Opus)
+        let anthropic_key_for_summary = anthropic_key.clone();
         let conversation_id_for_summary = conversation_id.clone();
         let agents_for_summary = agents_involved.clone();
         
         tokio::spawn(async move {
-            let summarizer = ConversationSummarizer::new(&api_key_for_summary);
+            let summarizer = ConversationSummarizer::new(&anthropic_key_for_summary);
             let all_messages = db::get_conversation_messages(&conversation_id_for_summary).unwrap_or_default();
             
             // Get existing summary
@@ -854,6 +897,183 @@ fn get_user_profile_summary() -> Result<String, String> {
     }
 }
 
+// ============ Governor Report Generation ============
+
+#[tauri::command]
+async fn generate_governor_report(profile_id: Option<String>) -> Result<String, String> {
+    use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_SONNET};
+    
+    // Get Anthropic API key
+    let user_profile = db::get_user_profile().map_err(|e| e.to_string())?;
+    let anthropic_key = user_profile.anthropic_key.ok_or("Anthropic API key not set")?;
+    
+    // Get all persona profiles
+    let profiles = db::get_all_persona_profiles().map_err(|e| e.to_string())?;
+    
+    // Get knowledge base data
+    let facts = db::get_all_user_facts().unwrap_or_default();
+    let patterns = db::get_all_user_patterns().unwrap_or_default();
+    let themes = db::get_all_recurring_themes().unwrap_or_default();
+    
+    // Build context for the LLM
+    let facts_text = if facts.is_empty() {
+        "No facts learned yet.".to_string()
+    } else {
+        facts.iter()
+            .take(30)
+            .map(|f| format!("- [{}] {}: {} (confidence: {:.0}%)", f.category, f.key, f.value, f.confidence * 100.0))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    
+    let patterns_text = if patterns.is_empty() {
+        "No patterns detected yet.".to_string()
+    } else {
+        patterns.iter()
+            .take(15)
+            .map(|p| format!("- [{}] {} (confidence: {:.0}%, seen {} times)", p.pattern_type, p.description, p.confidence * 100.0, p.observation_count))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    
+    let themes_text = if themes.is_empty() {
+        "No recurring themes yet.".to_string()
+    } else {
+        themes.iter()
+            .take(10)
+            .map(|t| format!("- {} (mentioned {} times)", t.theme, t.frequency))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    
+    let profiles_text = profiles.iter()
+        .map(|p| format!(
+            "- {} ({}): {} messages, weights: Logic {:.0}%, Instinct {:.0}%, Psyche {:.0}%{}",
+            p.name, p.dominant_trait, p.message_count,
+            p.logic_weight * 100.0, p.instinct_weight * 100.0, p.psyche_weight * 100.0,
+            if p.is_active { " [ACTIVE]" } else { "" }
+        ))
+        .collect::<Vec<_>>()
+        .join("\n");
+    
+    let total_messages: i64 = profiles.iter().map(|p| p.message_count).sum();
+    
+    // Determine if generating for a specific profile or all
+    let scope = if let Some(ref pid) = profile_id {
+        let target = profiles.iter().find(|p| p.id == *pid);
+        if let Some(p) = target {
+            // Check if this profile has enough messages
+            if p.message_count < 3 {
+                return Ok(format!("Switch to {} and chat with me a bit — I need more to go on before I can read you.", p.name));
+            }
+            format!("Generate a report specifically for the '{}' profile ({} dominant, {} messages).", p.name, p.dominant_trait, p.message_count)
+        } else {
+            "Generate an overview report across all profiles.".to_string()
+        }
+    } else {
+        // Check if there's enough total data for an overview
+        if total_messages < 5 {
+            return Ok("We're just getting started. Chat with me a bit more and I'll have something real to say.".to_string());
+        }
+        "Generate an overview report across all profiles.".to_string()
+    };
+    
+    let system_prompt = r#"You are the Governor of Intersect, an orchestration layer that manages multi-agent conversations. You have deep insight into the user's cognitive patterns.
+
+Your task is to generate a personalized insight based on the knowledge base data provided.
+
+CRITICAL LENGTH REQUIREMENT:
+- Write EXACTLY 2 sentences. No more.
+- Be direct and confident, not hedging
+- Synthesize what you've observed into a tight, meaningful observation
+- If there's little data, acknowledge it honestly in 2 sentences
+- Don't use headers or bullet points — just 2 flowing sentences
+
+FOCUS ON:
+- Cognitive tendencies (how they think)
+- Communication patterns (how they express themselves)  
+- Notable themes or interests"#;
+
+    let user_prompt = format!(
+        "SCOPE: {}\n\nPROFILES:\n{}\n\nTOTAL MESSAGES: {}\n\nLEARNED FACTS:\n{}\n\nBEHAVIORAL PATTERNS:\n{}\n\nRECURRING THEMES:\n{}\n\nGenerate the Governor's report:",
+        scope, profiles_text, total_messages, facts_text, patterns_text, themes_text
+    );
+    
+    // Use Sonnet (non-thinking) for fast report generation
+    let client = AnthropicClient::new(&anthropic_key);
+    let messages = vec![
+        AnthropicMessage {
+            role: "user".to_string(),
+            content: user_prompt,
+        },
+    ];
+    
+    let response = client.chat_completion_advanced(
+        CLAUDE_SONNET,
+        Some(system_prompt),
+        messages,
+        0.7, // Slightly creative
+        Some(150), // 2 sentences max
+        ThinkingBudget::None
+    ).await.map_err(|e| e.to_string())?;
+    
+    Ok(response)
+}
+
+// ============ 3-Sentence Summary ============
+
+#[tauri::command]
+async fn generate_user_summary() -> Result<String, String> {
+    use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_SONNET};
+    
+    let user_profile = db::get_user_profile().map_err(|e| e.to_string())?;
+    let anthropic_key = user_profile.anthropic_key.ok_or("Anthropic API key not set")?;
+    
+    let profiles = db::get_all_persona_profiles().map_err(|e| e.to_string())?;
+    let facts = db::get_all_user_facts().unwrap_or_default();
+    let patterns = db::get_all_user_patterns().unwrap_or_default();
+    let themes = db::get_all_recurring_themes().unwrap_or_default();
+    
+    let total_messages: i64 = profiles.iter().map(|p| p.message_count).sum();
+    
+    if total_messages < 5 {
+        return Ok("Not enough to vibe check yet — keep chatting and I'll get a read on you.".to_string());
+    }
+    
+    let context = format!(
+        "FACTS: {}\nPATTERNS: {}\nTHEMES: {}",
+        facts.iter().take(15).map(|f| format!("{}: {}", f.key, f.value)).collect::<Vec<_>>().join("; "),
+        patterns.iter().take(10).map(|p| p.description.clone()).collect::<Vec<_>>().join("; "),
+        themes.iter().take(8).map(|t| t.theme.clone()).collect::<Vec<_>>().join(", ")
+    );
+    
+    let system_prompt = r#"You are the Governor of Intersect. This is a VIBE CHECK — your gut read on who this person is based on everything you've observed.
+
+Rules:
+- Exactly 3 sentences, no more, no less
+- Be direct, almost casual — like you're telling a friend what you've noticed
+- Reference actual patterns and themes, but make it feel natural, not clinical
+- This should feel like insight with personality, not a report
+- Don't use bullet points or formatting, just 3 flowing sentences"#;
+
+    let client = AnthropicClient::new(&anthropic_key);
+    let messages = vec![
+        AnthropicMessage {
+            role: "user".to_string(),
+            content: format!("Based on this data, write your 3-sentence summary of this person:\n\n{}", context),
+        },
+    ];
+    
+    client.chat_completion_advanced(
+        CLAUDE_SONNET,
+        Some(system_prompt),
+        messages,
+        0.7,
+        Some(200),
+        ThinkingBudget::None
+    ).await.map_err(|e| e.to_string())
+}
+
 // ============ Reset ============
 
 #[tauri::command]
@@ -900,6 +1120,8 @@ pub fn run() {
             clear_user_context,
             get_memory_stats,
             get_user_profile_summary,
+            generate_governor_report,
+            generate_user_summary,
             reset_all_data,
             set_always_on_top,
         ])
