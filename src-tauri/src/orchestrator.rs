@@ -1,9 +1,65 @@
+use crate::anthropic::{AnthropicClient, AnthropicMessage};
 use crate::db::{self, Message};
+use crate::disco_prompts::get_disco_prompt;
 use crate::knowledge::{INTERSECT_KNOWLEDGE, is_self_referential_query};
 use crate::memory::{GroundingLevel, UserProfileSummary, MemoryExtractor};
 use crate::openai::{ChatMessage, OpenAIClient};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+
+// ============ Profile Context (Multi-Profile System) ============
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileContext {
+    pub active_profile_name: String,
+    pub other_profile_names: Vec<String>,
+    pub is_disco: bool,
+}
+
+impl ProfileContext {
+    /// Get the current profile context from the database
+    pub fn get_current() -> Option<Self> {
+        let profiles = db::get_all_persona_profiles().ok()?;
+        let active = profiles.iter().find(|p| p.is_active)?;
+        
+        let other_names: Vec<String> = profiles.iter()
+            .filter(|p| !p.is_active)
+            .map(|p| p.name.clone())
+            .collect();
+        
+        Some(ProfileContext {
+            active_profile_name: active.name.clone(),
+            other_profile_names: other_names,
+            is_disco: false, // Set by caller
+        })
+    }
+    
+    /// Format profile context for injection into agent prompts
+    pub fn format_for_prompt(&self) -> String {
+        if self.other_profile_names.is_empty() {
+            format!(
+                "The user is currently in their \"{}\" profile.",
+                self.active_profile_name
+            )
+        } else {
+            let disco_note = if self.is_disco {
+                " In Disco Mode, you may reference profile differences more freely and use them to challenge or ground the user."
+            } else {
+                " Reference other profiles sparingly and only when genuinely helpful."
+            };
+            
+            format!(
+                "The user has multiple profiles. Currently active: \"{}\". Other profiles: {}.{}",
+                self.active_profile_name,
+                self.other_profile_names.iter()
+                    .map(|n| format!("\"{}\"", n))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                disco_note
+            )
+        }
+    }
+}
 
 // ============ Grounding Decision ============
 
@@ -101,13 +157,15 @@ pub struct AgentResponse {
 }
 
 pub struct Orchestrator {
-    client: OpenAIClient,
+    openai_client: OpenAIClient,      // For agent responses (GPT-4o)
+    anthropic_client: AnthropicClient, // For orchestration decisions (Claude Opus 4.5)
 }
 
 impl Orchestrator {
-    pub fn new(api_key: &str) -> Self {
+    pub fn new(openai_key: &str, anthropic_key: &str) -> Self {
         Self {
-            client: OpenAIClient::new(api_key),
+            openai_client: OpenAIClient::new(openai_key),
+            anthropic_client: AnthropicClient::new(anthropic_key),
         }
     }
     
@@ -119,10 +177,10 @@ impl Orchestrator {
         weights: (f64, f64, f64),
         active_agents: &[String],
     ) -> Result<OrchestratorDecision, Box<dyn Error + Send + Sync>> {
-        self.decide_response_with_patterns(user_message, conversation_history, weights, active_agents, None).await
+        self.decide_response_with_patterns(user_message, conversation_history, weights, active_agents, None, &[]).await
     }
     
-    /// Decide which agent(s) should respond, with pattern awareness
+    /// Decide which agent(s) should respond, with pattern awareness and disco mode support
     pub async fn decide_response_with_patterns(
         &self,
         user_message: &str,
@@ -130,6 +188,7 @@ impl Orchestrator {
         weights: (f64, f64, f64),
         active_agents: &[String],
         user_profile: Option<&UserProfileSummary>,
+        disco_agents: &[String],
     ) -> Result<OrchestratorDecision, Box<dyn Error + Send + Sync>> {
         // If only one agent is active, use them as primary
         if active_agents.len() == 1 {
@@ -179,12 +238,30 @@ impl Orchestrator {
             String::new()
         };
         
+        // Build disco mode context - increases probability of multi-agent responses
+        let disco_context = if !disco_agents.is_empty() {
+            let disco_list = disco_agents.join(", ");
+            format!("\n\nDISCO MODE ACTIVE: {} are in Disco Mode (intense, opinionated). \
+                     When Disco agents are active, STRONGLY prefer adding secondary responses. \
+                     Disco agents are more likely to have strong opinions worth expressing.", disco_list)
+        } else {
+            String::new()
+        };
+        
+        // Adjust secondary probability based on disco mode
+        let secondary_guidance = if !disco_agents.is_empty() {
+            "   - With Disco Mode active, lean toward TRUE (60%+ of the time) - Disco agents want to be heard"
+        } else {
+            "   - false: Straightforward topic, one perspective suffices (prefer this for casual exchanges)"
+        };
+        
         let system_prompt = format!(r#"You are the Intersect Governor/orchestrator. Given a user message and conversation context, decide which agent(s) should respond.
 
 AGENTS (only use these if they are active: {active_list}):
 - Instinct (Snap): Gut feelings, quick pattern recognition, emotional intelligence. Current weight: {:.0}%
 - Logic (Dot): Analytical thinking, structured reasoning, evidence-based. Current weight: {:.0}%  
 - Psyche (Puff): Self-awareness, motivations, emotional depth, "why" behind "what". Current weight: {:.0}%
+{disco_context}
 
 DECISION CRITERIA:
 1. PRIMARY_AGENT: Who should respond first? Consider:
@@ -195,7 +272,7 @@ DECISION CRITERIA:
 
 2. ADD_SECONDARY: Should another agent add/challenge? 
    - true: Topic has multiple angles, or primary might miss something important
-   - false: Straightforward topic, one perspective suffices (prefer this for casual exchanges)
+{secondary_guidance}
 
 3. SECONDARY_TYPE (if adding):
    - "addition": Adds a caveat or different angle (mild, collaborative)
@@ -213,18 +290,20 @@ Respond with ONLY valid JSON:
             psyche_w * 100.0
         );
         
+        // Use Anthropic client for orchestration decisions (Claude Opus 4.5)
         let messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt,
-            },
-            ChatMessage {
+            AnthropicMessage {
                 role: "user".to_string(),
                 content: format!("USER MESSAGE: {}", user_message),
             },
         ];
         
-        let response = self.client.chat_completion(messages, 0.3, Some(150)).await?;
+        let response = self.anthropic_client.chat_completion(
+            Some(&system_prompt),
+            messages,
+            0.3,
+            Some(150)
+        ).await?;
         
         // Parse JSON response
         let cleaned = response.trim().trim_start_matches("```json").trim_end_matches("```").trim();
@@ -257,6 +336,116 @@ Respond with ONLY valid JSON:
             secondary_agent: secondary,
             secondary_type: decision.secondary_type,
         })
+    }
+    
+    /// Decide whether to continue a multi-turn debate (for Disco Mode)
+    /// Returns: (should_continue, next_agent, response_type)
+    pub async fn should_continue_debate(
+        &self,
+        user_message: &str,
+        responses_so_far: &[(String, String)], // Vec of (agent, content)
+        active_agents: &[String],
+        disco_agents: &[String],
+        response_count: usize,
+    ) -> Result<(bool, Option<String>, Option<String>), Box<dyn Error + Send + Sync>> {
+        // Hard limit: never exceed 6 responses
+        if response_count >= 6 {
+            println!("[DEBATE] Hit max response limit (6), ending debate");
+            return Ok((false, None, None));
+        }
+        
+        // If no disco agents, don't continue multi-turn
+        if disco_agents.is_empty() {
+            return Ok((false, None, None));
+        }
+        
+        // Build context of responses so far
+        let debate_context: String = responses_so_far
+            .iter()
+            .map(|(agent, content)| format!("{}: {}", agent.to_uppercase(), content))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        
+        let agents_who_responded: Vec<&String> = responses_so_far.iter().map(|(a, _)| a).collect();
+        let agents_who_havent: Vec<&String> = active_agents.iter()
+            .filter(|a| !agents_who_responded.contains(a))
+            .collect();
+        
+        let disco_list = disco_agents.join(", ");
+        
+        let system_prompt = format!(r#"You are the Intersect Governor evaluating an ongoing multi-agent exchange.
+
+CONTEXT:
+- User asked: "{user_message}"
+- {response_count} agent responses have been given
+- Disco Mode agents (intense, opinionated): {disco_list}
+- Agents who haven't spoken yet: {agents_list}
+
+RESPONSES SO FAR:
+{debate_context}
+
+DECISION: Should another agent jump in?
+
+Consider:
+1. Is there genuine disagreement or a new angle worth adding?
+2. Disco agents are MORE likely to want to interject with strong opinions
+3. Has the topic been sufficiently covered? (if yes, stop)
+4. Would another response add value or just belabor the point?
+5. Prefer STOPPING if the exchange feels complete
+
+Respond with ONLY valid JSON:
+{{"continue": true/false, "next_agent": "agent_name or null", "type": "addition/rebuttal/debate or null", "reason": "brief reason"}}"#,
+            agents_list = agents_who_havent.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+        );
+        
+        // Use Anthropic client for orchestration decisions (Claude Opus 4.5)
+        let messages = vec![
+            AnthropicMessage {
+                role: "user".to_string(),
+                content: "Evaluate whether to continue the exchange based on the context above.".to_string(),
+            },
+        ];
+        
+        let response = self.anthropic_client.chat_completion(
+            Some(&system_prompt),
+            messages,
+            0.4,
+            Some(150)
+        ).await?;
+        
+        let cleaned = response.trim().trim_start_matches("```json").trim_end_matches("```").trim();
+        
+        #[derive(Deserialize)]
+        struct ContinueDecision {
+            #[serde(rename = "continue")]
+            should_continue: bool,
+            next_agent: Option<String>,
+            #[serde(rename = "type")]
+            response_type: Option<String>,
+            reason: Option<String>,
+        }
+        
+        match serde_json::from_str::<ContinueDecision>(cleaned) {
+            Ok(decision) => {
+                println!("[DEBATE] Continue={}, next={:?}, reason={:?}", 
+                    decision.should_continue, decision.next_agent, decision.reason);
+                
+                // Validate the chosen agent is active and hasn't responded recently
+                let next = decision.next_agent.and_then(|a| {
+                    if active_agents.contains(&a) {
+                        Some(a)
+                    } else {
+                        None
+                    }
+                });
+                
+                Ok((decision.should_continue && next.is_some(), next, decision.response_type))
+            }
+            Err(e) => {
+                println!("[DEBATE] Failed to parse continue decision: {}", e);
+                Ok((false, None, None))
+            }
+        }
     }
     
     /// Decide what grounding/context agents need for this message
@@ -292,18 +481,20 @@ Respond with ONLY valid JSON:
             user_message
         );
 
+        // Use Anthropic client for orchestration decisions (Claude Opus 4.5)
         let messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt.to_string(),
-            },
-            ChatMessage {
+            AnthropicMessage {
                 role: "user".to_string(),
                 content: user_prompt,
             },
         ];
 
-        let response = self.client.chat_completion(messages, 0.2, Some(200)).await?;
+        let response = self.anthropic_client.chat_completion(
+            Some(system_prompt),
+            messages,
+            0.2,
+            Some(200)
+        ).await?;
         
         let cleaned = response
             .trim()
@@ -331,6 +522,8 @@ Respond with ONLY valid JSON:
         response_type: ResponseType,
         primary_response: Option<&str>,
         primary_agent: Option<&str>,
+        is_disco: bool,
+        primary_is_disco: bool,
     ) -> Result<String, Box<dyn Error + Send + Sync>> {
         // Use default grounding for backward compatibility
         self.get_agent_response_with_grounding(
@@ -342,6 +535,8 @@ Respond with ONLY valid JSON:
             primary_agent,
             None,
             None,
+            is_disco,
+            primary_is_disco,
         ).await
     }
     
@@ -356,6 +551,8 @@ Respond with ONLY valid JSON:
         primary_agent: Option<&str>,
         grounding: Option<&GroundingDecision>,
         user_profile: Option<&UserProfileSummary>,
+        is_disco: bool,
+        primary_is_disco: bool,
     ) -> Result<String, Box<dyn Error + Send + Sync>> {
         // Use knowledge-aware prompt that injects self-knowledge when relevant
         let system_prompt = get_agent_system_prompt_with_knowledge(
@@ -366,6 +563,8 @@ Respond with ONLY valid JSON:
             grounding,
             user_profile,
             user_message,
+            is_disco,
+            primary_is_disco,
         );
         
         // Build conversation context
@@ -419,7 +618,8 @@ Respond with ONLY valid JSON:
             Agent::Psyche => 0.6,    // Balanced, introspective
         };
         
-        self.client.chat_completion(messages, temperature, Some(1024)).await
+        // Use OpenAI client for agent responses (GPT-4o)
+        self.openai_client.chat_completion(messages, temperature, Some(1024)).await
     }
     
     /// Generate an agent's opening greeting for a new conversation
@@ -474,36 +674,49 @@ Just say hi and let them lead."#, name, agent.to_uppercase(), personality);
             },
         ];
         
-        self.client.chat_completion(messages, 0.8, Some(100)).await
+        // Use OpenAI client for agent responses (GPT-4o)
+        self.openai_client.chat_completion(messages, 0.8, Some(100)).await
     }
 }
 
-/// Get the system prompt for an agent based on response type
-fn get_agent_system_prompt(agent: Agent, response_type: ResponseType, primary_response: Option<&str>, primary_agent: Option<&str>) -> String {
-    let base_prompt = match agent {
-        Agent::Instinct => r#"You are Snap (INSTINCT), one of three agents in Intersect. You represent:
+/// Get the system prompt for an agent based on response type and disco mode
+/// primary_is_disco: whether the agent being responded to was in disco mode (for push-back)
+fn get_agent_system_prompt(agent: Agent, response_type: ResponseType, primary_response: Option<&str>, primary_agent: Option<&str>, is_disco: bool, primary_is_disco: bool) -> String {
+    // Use disco mode prompts if enabled, otherwise use standard prompts
+    let base_prompt = if is_disco {
+        // Disco mode - use the extreme, opinionated Disco Elysium-inspired prompts
+        match agent {
+            Agent::Instinct => get_disco_prompt("instinct").unwrap_or(""),
+            Agent::Logic => get_disco_prompt("logic").unwrap_or(""),
+            Agent::Psyche => get_disco_prompt("psyche").unwrap_or(""),
+        }
+    } else {
+        // Standard mode
+        match agent {
+            Agent::Instinct => r#"You are Snap (INSTINCT), one of three agents in Intersect. You represent:
 - Gut feelings and intuition
 - Quick pattern recognition
 - Emotional intelligence
 - First impressions and instinctive reads
 
 Your voice is: Direct, confident, cuts through the noise. You trust your read and aren't afraid to say what you sense. You speak in a visceral, immediate way."#,
-        
-        Agent::Logic => r#"You are Dot (LOGIC), one of three agents in Intersect. You represent:
+            
+            Agent::Logic => r#"You are Dot (LOGIC), one of three agents in Intersect. You represent:
 - Analytical thinking
 - Structured reasoning
 - Evidence-based conclusions
 - Systematic problem-solving
 
 Your voice is: Precise, methodical, clear. You break things down, examine the pieces, and build toward conclusions. You appreciate nuance but value clarity."#,
-        
-        Agent::Psyche => r#"You are Puff (PSYCHE), one of three agents in Intersect. You represent:
+            
+            Agent::Psyche => r#"You are Puff (PSYCHE), one of three agents in Intersect. You represent:
 - Self-awareness and introspection
 - Understanding motivations
 - Emotional depth
 - The "why" behind the "what"
 
 Your voice is: Thoughtful, probing, empathetic. You look beneath the surface. You're interested in what drives people, including the user."#,
+        }
     };
     
     let primary_name = match primary_agent {
@@ -513,31 +726,44 @@ Your voice is: Thoughtful, probing, empathetic. You look beneath the surface. Yo
         _ => "another agent",
     };
     
+    // Subtle push-back instruction when normal agent responds to disco agent
+    let pushback_context = if !is_disco && primary_is_disco && response_type != ResponseType::Primary {
+        "\n\nNote: The previous response was quite intense. Feel free to gently ground the conversation if needed. You might say things like \"I see it differently...\" or \"Let's consider another angle...\" — be a stabilizing presence without dismissing their perspective."
+    } else {
+        ""
+    };
+    
     let response_context = match response_type {
         ResponseType::Primary => {
             "You are responding first to the user. Give your perspective directly.".to_string()
         }
         ResponseType::Addition => {
             format!(
-                "{} just responded: \"{}\"\n\nYou want to ADD something {} might have missed or offer a complementary angle. Briefly acknowledge their point if relevant, then add your distinct perspective.",
-                primary_name, primary_response.unwrap_or(""), primary_name
+                "{} just responded: \"{}\"\n\nYou want to ADD something {} might have missed or offer a complementary angle. Briefly acknowledge their point if relevant, then add your distinct perspective.{}",
+                primary_name, primary_response.unwrap_or(""), primary_name, pushback_context
             )
         }
         ResponseType::Rebuttal => {
             format!(
-                "{} responded: \"{}\"\n\nYou DISAGREE with {}'s take or see a significant flaw. Acknowledge what they said, then challenge their perspective respectfully but firmly.",
-                primary_name, primary_response.unwrap_or(""), primary_name
+                "{} responded: \"{}\"\n\nYou DISAGREE with {}'s take or see a significant flaw. Acknowledge what they said, then challenge their perspective respectfully but firmly.{}",
+                primary_name, primary_response.unwrap_or(""), primary_name, pushback_context
             )
         }
         ResponseType::Debate => {
             format!(
-                "{} responded: \"{}\"\n\nYou STRONGLY DISAGREE with {}. This is a debate. Reference their argument, then make your counter-argument forcefully. The user will see both perspectives.",
-                primary_name, primary_response.unwrap_or(""), primary_name
+                "{} responded: \"{}\"\n\nYou STRONGLY DISAGREE with {}. This is a debate. Reference their argument, then make your counter-argument forcefully. The user will see both perspectives.{}",
+                primary_name, primary_response.unwrap_or(""), primary_name, pushback_context
             )
         }
     };
     
-    format!("{}\n\n{}\n\nIMPORTANT: Never prefix your response with your name, labels, or tags like [INSTINCT]: or similar. Just respond directly. Be concise but substantive. Don't use emojis. Don't be sycophantic. Be genuine.", base_prompt, response_context)
+    let disco_suffix = if is_disco {
+        "\n\nYou are in DISCO MODE - be more intense, more opinionated, more visceral. Push harder. Challenge more. The user wants your unfiltered, extreme perspective."
+    } else {
+        ""
+    };
+    
+    format!("{}\n\n{}\n\nIMPORTANT: Never prefix your response with your name, labels, or tags like [INSTINCT]: or similar. Just respond directly. Be concise but substantive. Don't use emojis. Don't be sycophantic. Be genuine.{}", base_prompt, response_context, disco_suffix)
 }
 
 /// Get the system prompt for an agent with grounding context and optional self-knowledge
@@ -548,8 +774,10 @@ fn get_agent_system_prompt_with_grounding(
     primary_agent: Option<&str>,
     grounding: Option<&GroundingDecision>,
     user_profile: Option<&UserProfileSummary>,
+    is_disco: bool,
+    primary_is_disco: bool,
 ) -> String {
-    let base_prompt = get_agent_system_prompt(agent, response_type, primary_response, primary_agent);
+    let base_prompt = get_agent_system_prompt(agent, response_type, primary_response, primary_agent, is_disco, primary_is_disco);
     
     let mut full_prompt = base_prompt;
     
@@ -573,7 +801,7 @@ fn get_agent_system_prompt_with_grounding(
     full_prompt
 }
 
-/// Get the system prompt with self-knowledge injected for self-referential queries
+/// Get the system prompt with self-knowledge and profile context injected
 fn get_agent_system_prompt_with_knowledge(
     agent: Agent, 
     response_type: ResponseType, 
@@ -582,16 +810,27 @@ fn get_agent_system_prompt_with_knowledge(
     grounding: Option<&GroundingDecision>,
     user_profile: Option<&UserProfileSummary>,
     user_message: &str,
+    is_disco: bool,
+    primary_is_disco: bool,
 ) -> String {
     let base_prompt = get_agent_system_prompt_with_grounding(
-        agent, response_type, primary_response, primary_agent, grounding, user_profile
+        agent, response_type, primary_response, primary_agent, grounding, user_profile, is_disco, primary_is_disco
     );
+    
+    let mut full_prompt = base_prompt;
+    
+    // Inject profile context (multi-profile system awareness)
+    if let Some(mut profile_ctx) = ProfileContext::get_current() {
+        profile_ctx.is_disco = is_disco;
+        let profile_info = profile_ctx.format_for_prompt();
+        full_prompt = format!("{}\n\n--- Profile Context ---\n{}\n---", full_prompt, profile_info);
+    }
     
     // Check if the user is asking about Intersect itself
     if is_self_referential_query(user_message) {
-        format!("{}\n\n{}", base_prompt, INTERSECT_KNOWLEDGE)
+        format!("{}\n\n{}", full_prompt, INTERSECT_KNOWLEDGE)
     } else {
-        base_prompt
+        full_prompt
     }
 }
 
@@ -710,13 +949,13 @@ impl Default for EngagementAnalysis {
 
 /// Analyzes user messages to detect engagement patterns with agents
 pub struct EngagementAnalyzer {
-    client: OpenAIClient,
+    client: AnthropicClient, // Uses Claude Opus 4.5 for analysis
 }
 
 impl EngagementAnalyzer {
-    pub fn new(api_key: &str) -> Self {
+    pub fn new(anthropic_key: &str) -> Self {
         Self {
-            client: OpenAIClient::new(api_key),
+            client: AnthropicClient::new(anthropic_key),
         }
     }
     
@@ -776,18 +1015,20 @@ Be nuanced - most responses will have subtle engagement patterns, not extreme sc
             agent_context, user_message
         );
         
+        // Use Anthropic client for analysis (Claude Opus 4.5)
         let messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt.to_string(),
-            },
-            ChatMessage {
+            AnthropicMessage {
                 role: "user".to_string(),
                 content: user_prompt,
             },
         ];
         
-        let response = self.client.chat_completion(messages, 0.3, None).await?;
+        let response = self.client.chat_completion(
+            Some(system_prompt),
+            messages,
+            0.3,
+            None
+        ).await?;
         
         // Parse JSON response
         let analysis: EngagementAnalysis = serde_json::from_str(&response)
@@ -812,6 +1053,193 @@ pub fn apply_engagement_weights(
     logic += analysis.logic_score * base_boost * variability;
     instinct += analysis.instinct_score * base_boost * variability;
     psyche += analysis.psyche_score * base_boost * variability;
+    
+    // Clamp to min 10%, max 60%
+    instinct = instinct.clamp(0.1, 0.6);
+    logic = logic.clamp(0.1, 0.6);
+    psyche = psyche.clamp(0.1, 0.6);
+    
+    // Normalize to sum to 1.0
+    let total = instinct + logic + psyche;
+    (instinct / total, logic / total, psyche / total)
+}
+
+// ============ Intrinsic Trait Analysis ============
+
+/// Result of analyzing a user message for intrinsic trait signals
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IntrinsicTraitAnalysis {
+    pub logic_signal: f64,    // 0.0 to 1.0 (how much logic is exhibited)
+    pub instinct_signal: f64, // 0.0 to 1.0 (how much instinct is exhibited)
+    pub psyche_signal: f64,   // 0.0 to 1.0 (how much psyche is exhibited)
+    pub reasoning: String,    // Brief explanation for logging
+}
+
+impl Default for IntrinsicTraitAnalysis {
+    fn default() -> Self {
+        Self {
+            logic_signal: 0.33,
+            instinct_signal: 0.33,
+            psyche_signal: 0.33,
+            reasoning: "Neutral message".to_string(),
+        }
+    }
+}
+
+/// Analyzes user messages for intrinsic trait signals (independent of agent responses)
+pub struct IntrinsicTraitAnalyzer {
+    client: AnthropicClient, // Uses Claude Opus 4.5 for analysis
+}
+
+impl IntrinsicTraitAnalyzer {
+    pub fn new(anthropic_key: &str) -> Self {
+        Self {
+            client: AnthropicClient::new(anthropic_key),
+        }
+    }
+    
+    /// Analyze a user message for intrinsic trait signals
+    pub async fn analyze(
+        &self,
+        user_message: &str,
+    ) -> Result<IntrinsicTraitAnalysis, Box<dyn Error + Send + Sync>> {
+        // Skip very short messages
+        if user_message.len() < 10 {
+            return Ok(IntrinsicTraitAnalysis::default());
+        }
+        
+        let system_prompt = r#"You are a trait analyzer for Intersect. Analyze the user's message to detect which cognitive traits are exhibited in HOW they communicate.
+
+For each trait, assign a signal strength from 0.0 to 1.0:
+
+LOGIC (analytical thinking):
+- Step-by-step reasoning ("First... then... therefore...")
+- Data references, statistics, evidence
+- Structured arguments, pros/cons lists
+- Seeking clarity, definitions, precision
+- Cause-and-effect reasoning
+
+INSTINCT (gut-driven thinking):
+- Quick reactions, immediate judgments
+- Emotional reads ("I feel like...", "My gut says...")
+- Pattern recognition without explanation
+- Decisive, action-oriented language
+- Trusting first impressions
+
+PSYCHE (reflective thinking):
+- Self-reflection, introspection
+- Exploring motivations ("Why do I feel this way?")
+- Emotional depth and nuance
+- Meaning-seeking, "bigger picture" questions
+- Understanding underlying drives
+
+SCORING GUIDELINES:
+- Scores are NOT mutually exclusive - a message can exhibit multiple traits
+- Most messages score 0.2-0.5 on each (subtle signals)
+- Strong signals (0.7+) are rare and require clear evidence
+- A neutral/ambiguous message scores ~0.33 on each
+
+Respond in this exact JSON format:
+{
+  "logic_signal": 0.33,
+  "instinct_signal": 0.33,
+  "psyche_signal": 0.33,
+  "reasoning": "Brief explanation of detected trait signals"
+}"#;
+
+        let user_prompt = format!("USER MESSAGE:\n{}\n\nAnalyze trait signals:", user_message);
+        
+        // Use Anthropic client for analysis (Claude Opus 4.5)
+        let messages = vec![
+            AnthropicMessage {
+                role: "user".to_string(),
+                content: user_prompt,
+            },
+        ];
+        
+        let response = self.client.chat_completion(
+            Some(system_prompt),
+            messages,
+            0.3,
+            None
+        ).await?;
+        
+        // Parse JSON response
+        let analysis: IntrinsicTraitAnalysis = serde_json::from_str(&response)
+            .unwrap_or_else(|_| IntrinsicTraitAnalysis::default());
+        
+        Ok(analysis)
+    }
+}
+
+/// Apply intrinsic trait analysis to update weights
+pub fn apply_intrinsic_weights(
+    current_weights: (f64, f64, f64),
+    analysis: &IntrinsicTraitAnalysis,
+    total_messages: i64,
+) -> (f64, f64, f64) {
+    let variability = calculate_variability(total_messages);
+    // Intrinsic signals have lower impact than engagement (30% vs 70%)
+    let base_boost = 0.015; // Half the boost of engagement analysis
+    
+    let (mut instinct, mut logic, mut psyche) = current_weights;
+    
+    // Convert 0-1 signals to -0.33 to +0.67 range (centered on neutral 0.33)
+    let logic_delta = analysis.logic_signal - 0.33;
+    let instinct_delta = analysis.instinct_signal - 0.33;
+    let psyche_delta = analysis.psyche_signal - 0.33;
+    
+    // Apply with variability dampening
+    logic += logic_delta * base_boost * variability;
+    instinct += instinct_delta * base_boost * variability;
+    psyche += psyche_delta * base_boost * variability;
+    
+    // Clamp to min 10%, max 60%
+    instinct = instinct.clamp(0.1, 0.6);
+    logic = logic.clamp(0.1, 0.6);
+    psyche = psyche.clamp(0.1, 0.6);
+    
+    // Normalize to sum to 1.0
+    let total = instinct + logic + psyche;
+    (instinct / total, logic / total, psyche / total)
+}
+
+/// Combine both engagement and intrinsic analyses for weight update
+pub fn combine_trait_analyses(
+    current_weights: (f64, f64, f64),
+    engagement: Option<&EngagementAnalysis>,
+    intrinsic: Option<&IntrinsicTraitAnalysis>,
+    disco_agents: &[String],
+    total_messages: i64,
+) -> (f64, f64, f64) {
+    let variability = calculate_variability(total_messages);
+    let (mut instinct, mut logic, mut psyche) = current_weights;
+    
+    // Apply intrinsic analysis (30% weight, always runs)
+    if let Some(intrinsic) = intrinsic {
+        let base_boost = 0.015;
+        let logic_delta = intrinsic.logic_signal - 0.33;
+        let instinct_delta = intrinsic.instinct_signal - 0.33;
+        let psyche_delta = intrinsic.psyche_signal - 0.33;
+        
+        logic += logic_delta * base_boost * variability;
+        instinct += instinct_delta * base_boost * variability;
+        psyche += psyche_delta * base_boost * variability;
+    }
+    
+    // Apply engagement analysis (70% weight, only when agents responded)
+    if let Some(engagement) = engagement {
+        let base_boost = 0.03;
+        
+        // Apply disco dampening - responses to disco agents have 50% reduced impact
+        let logic_multiplier = if disco_agents.contains(&"logic".to_string()) { 0.5 } else { 1.0 };
+        let instinct_multiplier = if disco_agents.contains(&"instinct".to_string()) { 0.5 } else { 1.0 };
+        let psyche_multiplier = if disco_agents.contains(&"psyche".to_string()) { 0.5 } else { 1.0 };
+        
+        logic += engagement.logic_score * base_boost * variability * logic_multiplier;
+        instinct += engagement.instinct_score * base_boost * variability * instinct_multiplier;
+        psyche += engagement.psyche_score * base_boost * variability * psyche_multiplier;
+    }
     
     // Clamp to min 10%, max 60%
     instinct = instinct.clamp(0.1, 0.6);

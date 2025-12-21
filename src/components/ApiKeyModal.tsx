@@ -161,7 +161,17 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
             className="relative z-10 w-full max-w-md mx-4 bg-obsidian/95 backdrop-blur-xl rounded-2xl border border-smoke/50 shadow-2xl overflow-hidden"
           >
             {/* Header */}
-            <div className="px-6 pt-6 pb-4 text-center border-b border-smoke/30">
+            <div className="px-6 pt-6 pb-4 text-center border-b border-smoke/30 relative">
+              {/* ESC button - top right */}
+              {openAiStatus === 'connected' && anthropicStatus === 'connected' && (
+                <button
+                  onClick={handleDone}
+                  className="absolute top-4 right-4 p-1 rounded text-[10px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer aspect-square flex items-center justify-center"
+                >
+                  ESC
+                </button>
+              )}
+              
               <div className="flex items-center justify-center gap-2 mb-2">
                 <img src={governorIcon} alt="" className="w-7 h-7 opacity-80" />
                 <h1 className="font-logo text-2xl font-bold text-white">
@@ -169,25 +179,7 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
                 </h1>
                 <span className="text-[10px] font-mono text-ash/50 ml-1.5">v1</span>
               </div>
-              <p className="text-ash font-mono text-xs mb-3">Configure your AI connections</p>
-              
-              {/* Overall status summary */}
-              <div className="flex items-center justify-center gap-4">
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    openAiStatus === 'connected' ? 'bg-emerald-500' : 
-                    openAiStatus === 'error' ? 'bg-red-500' : 'bg-ash/30'
-                  }`} />
-                  <span className="text-[10px] font-mono text-ash/60">Agents</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    anthropicStatus === 'connected' ? 'bg-emerald-500' : 
-                    anthropicStatus === 'error' ? 'bg-red-500' : 'bg-ash/30'
-                  }`} />
-                  <span className="text-[10px] font-mono text-ash/60">Governor</span>
-                </div>
-              </div>
+              <p className="text-ash font-mono text-xs">Configure your AI connections</p>
             </div>
 
             <div className="p-6 space-y-5">
@@ -324,21 +316,6 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
                 </motion.p>
               )}
 
-              {/* Done button */}
-              <button
-                onClick={handleDone}
-                disabled={openAiStatus !== 'connected' || anthropicStatus !== 'connected'}
-                className="w-full px-4 py-2.5 font-mono text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 bg-charcoal/50 border border-smoke/40 text-pearl hover:bg-smoke/30"
-              >
-                {openAiStatus === 'connected' && anthropicStatus === 'connected' ? (
-                  <>
-                    Done
-                    <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded text-[9px] font-mono text-ash/60 border border-smoke/50">ESC</kbd>
-                  </>
-                ) : (
-                  'API keys required'
-                )}
-              </button>
             </div>
           </motion.div>
         </motion.div>

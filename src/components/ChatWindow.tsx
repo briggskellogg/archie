@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { MessageSquarePlus, BadgeCheck } from 'lucide-react';
+import { MessageSquarePlus, Sparkles, ExternalLink, ShieldCheck } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { DebateIndicator } from './DebateIndicator';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { ProfileSwitcher } from './ProfileSwitcher';
 import { useAppStore } from '../store';
 import { Message, AgentType, DebateMode } from '../types';
 import { AGENTS, AGENT_ORDER, USER_PROFILES } from '../constants/agents';
@@ -20,9 +21,10 @@ import { GovernorNotification } from './GovernorNotification';
 
 interface ChatWindowProps {
   onOpenSettings: () => void;
+  onOpenReport: () => void;
 }
 
-export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
+export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
   const {
     messages,
     addMessage,
@@ -30,8 +32,10 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
     currentConversation,
     setCurrentConversation,
     getActiveAgentsList,
-    activeAgents,
-    toggleAgent,
+    getDiscoAgents,
+    agentModes,
+    cycleAgentMode,
+    toggleAllDisco,
     debateMode,
     setDebateMode,
     isLoading,
@@ -46,42 +50,41 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
     setUserProfile,
   } = useAppStore();
   
-  // Count active agents for Governor logic
-  const activeCount = Object.values(activeAgents).filter(Boolean).length;
+  // Count active agents for Governor logic (on or disco = active)
+  const activeCount = Object.values(agentModes).filter(m => m !== 'off').length;
   
-  // Get dominant trait for user identity
-  const getDominantAgent = () => {
-    if (!userProfile) return 'logic' as AgentType;
-    const weights = {
-      instinct: userProfile.instinctWeight,
-      logic: userProfile.logicWeight,
-      psyche: userProfile.psycheWeight,
-    };
-    let max: AgentType = 'logic';
-    let maxWeight = 0;
-    for (const [agent, weight] of Object.entries(weights)) {
-      if (weight > maxWeight) {
-        maxWeight = weight;
-        max = agent as AgentType;
-      }
-    }
-    return max;
-  };
-  const dominantAgent = getDominantAgent();
-  const dominantAgentConfig = AGENTS[dominantAgent];
+  const { activePersonaProfile } = useAppStore();
+  
+  // Get dominant trait from active persona profile
+  const dominantAgent: AgentType = activePersonaProfile?.dominantTrait || 'logic';
   
   const [inputValue, setInputValue] = useState('');
   const [governorNotification, setGovernorNotification] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasInitialized = useRef(false);
+  const shouldCancelDebate = useRef(false); // For user interruption during multi-turn debates
+  const pendingMessage = useRef<string | null>(null); // Queue user's interrupting message
 
   // Initialize conversation when API key is available
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:useEffect-check',message:'ChatWindow useEffect triggered',data:{hasApiKey:!!userProfile?.apiKey,hasConversation:!!currentConversation,hasInitialized:hasInitialized.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
     async function initConversation() {
       // Prevent double initialization in React StrictMode
-      if (hasInitialized.current) return;
+      if (hasInitialized.current) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:double-init-blocked',message:'Double init blocked by ref',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
       hasInitialized.current = true;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:initConversation-start',message:'initConversation starting',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       
       try {
         // Create a new conversation
@@ -96,8 +99,16 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
         // Governor thinks for 3 seconds while choosing agent
         await new Promise(r => setTimeout(r, 3000));
         
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:before-getOpener',message:'About to call getConversationOpener',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        
         // Get opener (backend chooses agent based on weights)
         const openerResult = await getConversationOpener();
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:after-getOpener',message:'getConversationOpener completed',data:{agent:openerResult.agent},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         
         // Now show the chosen agent thinking
         setThinkingAgent(openerResult.agent as AgentType);
@@ -118,6 +129,9 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
         setIsLoading(false);
         setThinkingAgent(null);
       } catch (err) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:initConversation-error',message:'initConversation error',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         console.error('Failed to init conversation:', err);
         setIsLoading(false);
         setThinkingAgent(null);
@@ -170,7 +184,11 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
             break;
           case 'p':
             e.preventDefault();
-            onOpenSettings();
+            onOpenSettings(); // Open Profile modal
+            break;
+          case 'r':
+            e.preventDefault();
+            onOpenReport(); // Open The Governor (report)
             break;
         }
       }
@@ -186,18 +204,37 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
     
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
+  }, [onOpenReport]);
 
   // Handle send message
   const handleSend = async () => {
     const content = inputValue.trim();
-    if (!content || isLoading || !currentConversation) return;
+    if (!content || !currentConversation) return;
+    
+    // Allow interruption during agent responses (not during initial routing)
+    if (isLoading && thinkingPhase === 'routing') {
+      // Can't interrupt during routing phase - wait
+      return;
+    }
+    
+    // If already loading (agents responding), trigger interruption
+    if (isLoading) {
+      shouldCancelDebate.current = true;
+      pendingMessage.current = content;
+      setInputValue('');
+      return; // The pending message will be processed after current agent finishes
+    }
     
     const activeList = getActiveAgentsList();
+    const discoList = getDiscoAgents();
     if (activeList.length === 0) {
       setError('Enable at least one agent');
       return;
     }
+    
+    // Reset cancel flag for new message
+    shouldCancelDebate.current = false;
+    pendingMessage.current = null;
     
     // Clear input and reset debate mode
     setInputValue('');
@@ -221,7 +258,7 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
     setThinkingAgent('system'); // Governor is routing
     
     try {
-      const result = await sendMessage(currentConversation.id, content, activeList);
+      const result = await sendMessage(currentConversation.id, content, activeList, discoList);
       
       // Set debate mode if applicable
       if (result.debate_mode) {
@@ -242,6 +279,12 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
 
       // Show each responding agent - wait for previous to finish typing
       for (let i = 0; i < result.responses.length; i++) {
+        // Check for user interruption before processing next response
+        if (shouldCancelDebate.current && i > 0) {
+          console.log('[INTERRUPT] User interrupted debate after', i, 'responses');
+          break;
+        }
+        
         const response = result.responses[i];
         
         // Show this agent thinking
@@ -252,6 +295,9 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
         // Clear thinking indicator before message appears
         setThinkingAgent(null);
         
+        // Check if this agent was in disco mode when the message was sent
+        const wasInDiscoMode = discoList.includes(response.agent as AgentType);
+        
         const agentMessage: Message = {
           id: uuidv4(),
           conversationId: currentConversation.id,
@@ -260,6 +306,7 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
           responseType: response.response_type as Message['responseType'],
           referencesMessageId: response.references_message_id || undefined,
           timestamp: new Date(),
+          isDisco: wasInDiscoMode,
         };
         addMessage(agentMessage);
         
@@ -267,6 +314,12 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
         if (i < result.responses.length - 1) {
           const typingTime = getTypingDuration(response.agent, response.content.length);
           await new Promise(r => setTimeout(r, typingTime));
+          
+          // Check again after typing completes
+          if (shouldCancelDebate.current) {
+            console.log('[INTERRUPT] User interrupted after agent finished typing');
+            break;
+          }
         }
       }
       
@@ -316,6 +369,120 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
     } finally {
       setIsLoading(false);
       setThinkingAgent(null);
+      
+      // Process any pending message from user interruption
+      const queuedContent = pendingMessage.current;
+      if (queuedContent) {
+        pendingMessage.current = null;
+        shouldCancelDebate.current = false;
+        
+        // Schedule the pending message to be processed after state updates
+        setTimeout(() => {
+          processQueuedMessage(queuedContent);
+        }, 100);
+      }
+    }
+  };
+  
+  // Process a queued message (from user interruption)
+  const processQueuedMessage = async (content: string) => {
+    if (!currentConversation) return;
+    
+    const activeList = getActiveAgentsList();
+    const discoList = getDiscoAgents();
+    if (activeList.length === 0) return;
+    
+    // Reset cancel flag
+    shouldCancelDebate.current = false;
+    pendingMessage.current = null;
+    setDebateMode(null);
+    
+    // Add user message
+    const userMessage: Message = {
+      id: uuidv4(),
+      conversationId: currentConversation.id,
+      role: 'user',
+      content,
+      timestamp: new Date(),
+    };
+    addMessage(userMessage);
+    
+    setIsLoading(true);
+    setError(null);
+    setThinkingPhase('routing');
+    setThinkingAgent('system');
+    
+    try {
+      const result = await sendMessage(currentConversation.id, content, activeList, discoList);
+      
+      if (result.debate_mode) {
+        setDebateMode(result.debate_mode as DebateMode);
+      }
+      
+      const getTypingDuration = (agent: string, contentLength: number): number => {
+        const speeds: Record<string, number> = {
+          instinct: 20,
+          logic: 45,
+          psyche: 32,
+        };
+        const msPerChar = speeds[agent] || 30;
+        return contentLength * msPerChar + 500;
+      };
+      
+      for (let i = 0; i < result.responses.length; i++) {
+        if (shouldCancelDebate.current && i > 0) break;
+        
+        const response = result.responses[i];
+        setThinkingAgent(response.agent as AgentType);
+        setThinkingPhase('thinking');
+        await new Promise(r => setTimeout(r, 800));
+        setThinkingAgent(null);
+        
+        const wasInDiscoMode = discoList.includes(response.agent as AgentType);
+        
+        const agentMessage: Message = {
+          id: uuidv4(),
+          conversationId: currentConversation.id,
+          role: response.agent as AgentType,
+          content: response.content,
+          responseType: response.response_type as Message['responseType'],
+          referencesMessageId: response.references_message_id || undefined,
+          timestamp: new Date(),
+          isDisco: wasInDiscoMode,
+        };
+        addMessage(agentMessage);
+        
+        if (i < result.responses.length - 1) {
+          const typingTime = getTypingDuration(response.agent, response.content.length);
+          await new Promise(r => setTimeout(r, typingTime));
+          if (shouldCancelDebate.current) break;
+        }
+      }
+      
+      if (result.weight_change) {
+        setGovernorNotification(result.weight_change.message);
+      }
+      
+      try {
+        const updatedProfile = await getUserProfile();
+        setUserProfile(updatedProfile);
+      } catch (profileErr) {
+        console.error('Failed to refresh profile:', profileErr);
+      }
+    } catch (err) {
+      const rawError = err instanceof Error ? err.message : String(err);
+      setError(rawError);
+    } finally {
+      setIsLoading(false);
+      setThinkingAgent(null);
+      
+      // Handle nested interruption
+      const nextQueued = pendingMessage.current;
+      if (nextQueued) {
+        pendingMessage.current = null;
+        shouldCancelDebate.current = false;
+        setTimeout(() => processQueuedMessage(nextQueued), 100);
+      }
     }
   };
 
@@ -416,7 +583,7 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
       {/* Header - Clean, centered logo with space for macOS window controls */}
       {/* #region agent log */}
       <header 
-        className="flex items-center justify-between pl-20 pr-4 py-3 border-b border-smoke/30 bg-obsidian/80 backdrop-blur-md cursor-default"
+        className="flex items-center justify-between pl-20 pr-4 py-2 border-b border-smoke/30 bg-obsidian/80 backdrop-blur-md cursor-default"
         onMouseDown={async (e) => {
           const isButton = (e.target as HTMLElement).closest('button');
           fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:header',message:'Header mousedown',data:{isButton:!!isButton,target:(e.target as HTMLElement).tagName},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
@@ -430,8 +597,96 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
         }}
       >
       {/* #endregion */}
-        {/* Left spacer for centering (no longer needed, padding handles window controls) */}
-        <div className="w-20" data-tauri-drag-region />
+        {/* Left controls - New Chat + Agent toggles */}
+        <div className="flex items-center gap-4">
+          {/* New conversation */}
+          <button
+            onClick={handleNewConversation}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-ash hover:text-pearl hover:bg-smoke/20 transition-all group cursor-pointer"
+            title="New conversation (⌘N)"
+          >
+            <MessageSquarePlus className="w-4 h-4" strokeWidth={1.5} />
+            <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘N</kbd>
+          </button>
+          
+          {/* Agent toggles */}
+          <div className="flex items-center gap-3">
+            {AGENT_ORDER.map((agentId) => {
+              const agent = AGENTS[agentId];
+              const mode = agentModes[agentId];
+              const isActive = mode !== 'off';
+              const isDisco = mode === 'disco';
+              
+              const greetings: Record<AgentType, string> = {
+                instinct: "I'm Snap. I trust my gut and help you cut through the noise with quick, intuitive reads.",
+                logic: "I'm Dot. I help you think methodically, breaking down problems with structured reasoning.",
+                psyche: "I'm Puff. I explore the 'why' behind everything — your motivations, emotions, and deeper meaning.",
+              };
+              
+              const modeLabel = mode === 'off' ? 'Off' : mode === 'on' ? 'On' : 'Disco Mode';
+              
+              return (
+                <div key={agentId} className="relative group/agent flex items-center">
+                  <motion.button
+                    onClick={() => cycleAgentMode(agentId)}
+                    className={`relative w-6 h-6 rounded-full overflow-hidden transition-all ${
+                      isDisco
+                        ? 'ring-[1.5px] ring-offset-1 ring-offset-obsidian opacity-100'
+                        : isActive 
+                          ? 'ring-[1px] ring-offset-1 ring-offset-obsidian opacity-100' 
+                          : 'opacity-40 grayscale hover:opacity-60'
+                    } cursor-pointer`}
+                    style={{ 
+                      // @ts-expect-error Tailwind CSS variable for ring color
+                      '--tw-ring-color': isDisco ? '#EAB308' : isActive ? agent.color : 'transparent',
+                    }}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
+                  >
+                    <img 
+                      src={agent.avatar} 
+                      alt={agent.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </motion.button>
+                  
+                  {/* Hover tooltip */}
+                  <div 
+                    className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-obsidian/95 border rounded-lg opacity-0 invisible group-hover/agent:opacity-100 group-hover/agent:visible transition-all shadow-xl w-[200px] z-50 pointer-events-none"
+                    style={{ borderColor: isDisco ? '#EAB30840' : `${agent.color}40` }}
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span 
+                        className="text-xs font-sans font-medium"
+                        style={{ color: isDisco ? '#EAB308' : agent.color }}
+                      >
+                        {agent.name}
+                      </span>
+                      <span className="text-[9px] text-ash/50 font-mono uppercase">{agentId}</span>
+                      <span 
+                        className={`text-[8px] px-1.5 py-0.5 rounded-full font-mono uppercase ${
+                          isDisco 
+                            ? 'bg-amber-500/20 text-amber-400' 
+                            : isActive 
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-smoke/30 text-ash/50'
+                        }`}
+                      >
+                        {modeLabel}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-ash/80 font-mono leading-relaxed">
+                      {isDisco 
+                        ? `${agent.name} is in Disco Mode — extreme, opinionated, no holds barred.`
+                        : greetings[agentId]
+                      }
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         
         {/* Centered logo */}
         <div 
@@ -446,21 +701,14 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
 
         {/* Right controls */}
         <div className="flex items-center gap-2 justify-end">
-          {/* New conversation */}
-          <button
-            onClick={handleNewConversation}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-ash hover:text-pearl hover:bg-smoke/20 transition-all group cursor-pointer"
-            title="New conversation (⌘N)"
-          >
-            <MessageSquarePlus className="w-4 h-4" strokeWidth={1.5} />
-            <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none">⌘N</kbd>
-          </button>
+          {/* Profile Switcher - opens profile modal */}
+          <ProfileSwitcher onOpenProfileModal={onOpenSettings} />
           
-          {/* Governor - click to open Profile */}
+          {/* Governor - opens report modal */}
           <button
-            onClick={onOpenSettings}
+            onClick={onOpenReport}
             className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-smoke/20 transition-all cursor-pointer"
-            title="Profile (⌘P)"
+            title="The Governor (⌘R)"
           >
             <img src={governorIcon} alt="Governor" className="w-5 h-5" />
             {activeCount > 1 ? (
@@ -468,7 +716,7 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
             ) : (
               <span className="w-1.5 h-1.5 rounded-full bg-ash/40" />
             )}
-            <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none">⌘P</kbd>
+            <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘R</kbd>
           </button>
         </div>
       </header>
@@ -511,21 +759,29 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
         <div className="flex items-center gap-3">
           {/* Floating chat input */}
           <div className="flex-1 bg-charcoal/80 backdrop-blur-xl rounded-2xl border border-smoke/30 transition-all relative flex items-center shadow-2xl">
-            {/* User identity indicator on left */}
+            {/* User identity indicator on left with pulsing gold border */}
             <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
               <div className="relative">
+                {/* Subtle pulsing gold ring - never fully fades */}
+                <motion.div
+                  className="absolute inset-0 rounded-full"
+                  style={{ 
+                    boxShadow: '0 0 0 2px #EAB308',
+                  }}
+                  animate={{ 
+                    opacity: [0.65, 0.9, 0.65],
+                  }}
+                  transition={{ 
+                    duration: 3,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
+                />
                 <img 
                   src={USER_PROFILES[dominantAgent]} 
                   alt="You"
-                  className="w-7 h-7 rounded-full"
-                  style={{ boxShadow: `0 0 0 2px ${dominantAgentConfig.color}60` }}
+                  className="w-7 h-7 rounded-full relative z-10"
                 />
-                <div 
-                  className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: dominantAgentConfig.color }}
-                >
-                  <BadgeCheck className="w-3.5 h-3.5 text-obsidian" strokeWidth={2.5} />
-                </div>
               </div>
             </div>
             
@@ -544,7 +800,7 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
             {!inputValue && (
               <div className="absolute left-14 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                 <span className="text-ash/40 font-mono text-sm">Press</span>
-                <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded-md text-ash/60 font-mono text-xs border border-smoke/40">/</kbd>
+                <kbd className="p-1 bg-smoke/30 rounded-md text-ash/60 font-mono text-xs border border-smoke/40 aspect-square flex items-center justify-center">/</kbd>
                 <span className="text-ash/40 font-mono text-sm">to chat</span>
               </div>
             )}
@@ -553,76 +809,70 @@ export function ChatWindow({ onOpenSettings }: ChatWindowProps) {
               <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded-md text-ash/50 font-mono text-[10px] border border-smoke/40">↵ ENT</kbd>
             </div>
           </div>
-
-          {/* Agent toggles on the right */}
-          <div className="flex items-center gap-3">
-            {AGENT_ORDER.map((agentId) => {
-              const agent = AGENTS[agentId];
-              const isActive = activeAgents[agentId];
-              const canToggle = activeCount > 1 || !isActive;
-              
-              // Agent-specific greetings in their style
-              const greetings: Record<AgentType, string> = {
-                instinct: "I'm Snap. I trust my gut and help you cut through the noise with quick, intuitive reads.",
-                logic: "I'm Dot. I help you think methodically, breaking down problems with structured reasoning.",
-                psyche: "I'm Puff. I explore the 'why' behind everything — your motivations, emotions, and deeper meaning.",
-              };
-              
-              return (
-                <div key={agentId} className="relative group/agent">
-                  <motion.button
-                    onClick={() => canToggle && toggleAgent(agentId)}
-                    className={`relative w-9 h-9 rounded-full overflow-hidden transition-all ${
-                      isActive 
-                        ? 'ring-2 ring-offset-2 ring-offset-obsidian opacity-100' 
-                        : 'opacity-40 grayscale hover:opacity-60'
-                    } ${!canToggle ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                    style={{ 
-                      // @ts-expect-error Tailwind CSS variable for ring color
-                      '--tw-ring-color': isActive ? agent.color : 'transparent',
-                    }}
-                    whileHover={canToggle ? { scale: 1.08 } : {}}
-                    whileTap={canToggle ? { scale: 0.92 } : {}}
+          
+          {/* Disco Mode toggle */}
+          {(() => {
+            const activeAgents = Object.entries(agentModes).filter(([, mode]) => mode !== 'off');
+            const discoCount = activeAgents.filter(([, mode]) => mode === 'disco').length;
+            const discoState: 'off' | 'partial' | 'on' = 
+              discoCount === 0 ? 'off' : 
+              discoCount === activeAgents.length ? 'on' : 'partial';
+            
+            return (
+              <div className="relative group/disco">
+                <motion.button
+                  onClick={toggleAllDisco}
+                  className={`p-2 rounded-lg transition-all cursor-pointer ${
+                    discoState === 'on'
+                      ? 'bg-amber-500/20 border border-amber-500/50 text-amber-400'
+                      : discoState === 'partial'
+                        ? 'bg-amber-500/10 text-amber-500/70'
+                        : 'bg-charcoal/60 border border-smoke/30 text-ash/50 hover:text-ash hover:border-smoke/50'
+                  }`}
+                  style={discoState === 'partial' ? {
+                    border: '1px dashed rgba(234, 179, 8, 0.4)',
+                  } : undefined}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title={discoState === 'on' ? 'Disable Disco Mode for all' : 'Enable Disco Mode for all'}
+                >
+                  <Sparkles 
+                    className={`w-5 h-5 ${discoState === 'partial' ? 'opacity-70' : ''}`} 
+                    strokeWidth={1.5}
+                  />
+                </motion.button>
+                
+                {/* Disco Mode tooltip */}
+                <div className="absolute bottom-full mb-2 right-0 w-[240px] px-3 py-2.5 bg-obsidian/95 border border-amber-500/30 rounded-xl opacity-0 invisible group-hover/disco:opacity-100 group-hover/disco:visible transition-all shadow-xl z-50">
+                  <h4 className="text-xs font-sans font-medium text-amber-500 mb-1">Disco Mode</h4>
+                  <p className="text-[10px] text-silver/80 font-mono leading-relaxed">
+                    Activate for an intense, opinionated experience. 
+                    Responses become more visceral, concise, and challenging.
+                  </p>
+                  <a 
+                    href="https://discoelysium.com" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[9px] text-amber-500/60 hover:text-amber-500 font-mono transition-colors mt-1.5 cursor-pointer"
                   >
-                    <img 
-                      src={agent.avatar} 
-                      alt={agent.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </motion.button>
-                  
-                  {/* Hover tooltip with agent greeting */}
-                  <div 
-                    className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-obsidian/95 border rounded-lg opacity-0 invisible group-hover/agent:opacity-100 group-hover/agent:visible transition-all shadow-xl w-[200px] z-50 pointer-events-none"
-                    style={{ borderColor: `${agent.color}40` }}
-                  >
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span 
-                        className="text-xs font-sans font-medium"
-                        style={{ color: agent.color }}
-                      >
-                        {agent.name}
-                      </span>
-                      <span className="text-[9px] text-ash/50 font-mono uppercase">{agentId}</span>
-                    </div>
-                    <p className="text-[10px] text-ash/80 font-mono leading-relaxed">
-                      {greetings[agentId]}
-                    </p>
-                    {!canToggle && (
-                      <p className="text-[9px] text-instinct/60 font-mono mt-1">At least one agent required</p>
-                    )}
-                    {/* Tooltip arrow */}
-                    <div 
-                      className="absolute left-1/2 -translate-x-1/2 top-full -mt-px border-4 border-transparent"
-                      style={{ borderTopColor: `${agent.color}40` }}
-                    />
-                  </div>
+                    <ExternalLink className="w-2.5 h-2.5" strokeWidth={1.5} />
+                    Inspired by Disco Elysium
+                  </a>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })()}
+        </div>
+        
+        {/* Privacy notice */}
+        <div className="flex items-center justify-center gap-1.5 mt-2">
+          <ShieldCheck className="w-3.5 h-3.5 text-cyan-500/60" strokeWidth={1.5} />
+          <span className="text-[11px] text-ash/40 font-mono">
+            Your data stays on your device and is never used to train models
+          </span>
         </div>
       </div>
     </div>
   );
 }
+

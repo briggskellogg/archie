@@ -5,7 +5,7 @@ import { ApiKeyModal } from './components/ApiKeyModal';
 import { ChatWindow } from './components/ChatWindow';
 import { Settings } from './components/Settings';
 import { ReportModal } from './components/ReportModal';
-import { initApp, getUserProfile } from './hooks/useTauri';
+import { initApp, getUserProfile, getActivePersonaProfile } from './hooks/useTauri';
 import { AGENTS } from './constants/agents';
 
 function App() {
@@ -13,12 +13,13 @@ function App() {
     setUserProfile,
     isSettingsOpen,
     setSettingsOpen,
-    activeAgents,
+    setActivePersonaProfile,
   } = useAppStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [needsApiKey, setNeedsApiKey] = useState(false);
   const [isReportOpen, setReportOpen] = useState(false);
+  const [showApiModalFromReport, setShowApiModalFromReport] = useState(false);
 
   // Open report modal (closes settings first)
   const handleOpenReport = () => {
@@ -29,24 +30,48 @@ function App() {
   // Initialize app
   useEffect(() => {
     async function init() {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:init-start',message:'Init started',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       try {
         await initApp();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:after-initApp',message:'initApp completed',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         const profile = await getUserProfile();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:after-getUserProfile',message:'getUserProfile completed',data:{hasApiKey:!!profile.apiKey,hasAnthropicKey:!!profile.anthropicKey},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         setUserProfile(profile);
         
         // Check if BOTH API keys are needed (require OpenAI AND Anthropic)
         if (!profile.apiKey || !profile.anthropicKey) {
           setNeedsApiKey(true);
+        } else {
+          // Load active persona profile (3 profiles are auto-created on init)
+          const activePersona = await getActivePersonaProfile();
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:after-getActivePersona',message:'getActivePersonaProfile completed',data:{hasPersona:!!activePersona},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          if (activePersona) {
+            setActivePersonaProfile(activePersona);
+          }
         }
       } catch (err) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:init-error',message:'Init error',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         console.error('Failed to initialize:', err);
         setNeedsApiKey(true);
       } finally {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:init-finally',message:'Init finally block',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         setIsLoading(false);
       }
     }
     init();
-  }, [setUserProfile]);
+  }, [setUserProfile, setActivePersonaProfile]);
 
   // Handle API key setup complete - only close if BOTH keys are present
   const handleApiKeyComplete = async () => {
@@ -56,6 +81,12 @@ function App() {
       // Only close modal if both keys are now present
       if (profile.apiKey && profile.anthropicKey) {
         setNeedsApiKey(false);
+        
+        // Load active persona profile (3 profiles are auto-created on init)
+        const activePersona = await getActivePersonaProfile();
+        if (activePersona) {
+          setActivePersonaProfile(activePersona);
+        }
       }
     } catch (err) {
       console.error('Failed to get profile:', err);
@@ -106,7 +137,10 @@ function App() {
   return (
     <div className="h-screen bg-void">
       {/* Chat window is always visible */}
-      <ChatWindow onOpenSettings={() => setSettingsOpen(true)} />
+      <ChatWindow 
+        onOpenSettings={() => setSettingsOpen(true)} 
+        onOpenReport={handleOpenReport}
+      />
 
       {/* API Key modal overlays the chat when needed */}
       <ApiKeyModal 
@@ -117,13 +151,21 @@ function App() {
       <Settings
         isOpen={isSettingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onRequestReport={handleOpenReport}
-        activeAgentCount={Object.values(activeAgents).filter(Boolean).length}
       />
 
       <ReportModal
         isOpen={isReportOpen}
         onClose={() => setReportOpen(false)}
+        onOpenApiModal={() => setShowApiModalFromReport(true)}
+      />
+
+      {/* API Key modal from Report */}
+      <ApiKeyModal 
+        isOpen={showApiModalFromReport} 
+        onComplete={() => {
+          setShowApiModalFromReport(false);
+          handleApiKeyComplete();
+        }}
       />
     </div>
   );

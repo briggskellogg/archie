@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ChevronRight } from 'lucide-react';
+import { Loader2, ChevronRight, ExternalLink, Key } from 'lucide-react';
 import { useAppStore } from '../store';
 import { AGENTS } from '../constants/agents';
-import { getMemoryStats, getUserProfileSummary, MemoryStats } from '../hooks/useTauri';
+import { getMemoryStats, MemoryStats, getAllPersonaProfiles } from '../hooks/useTauri';
+import { PersonaProfile } from '../types';
 import governorImage from '../assets/governor.png';
 
 interface ReportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenApiModal?: () => void;
 }
 
 interface ExpandedItem {
@@ -16,137 +18,207 @@ interface ExpandedItem {
   key: string;
 }
 
-export function ReportModal({ isOpen, onClose }: ReportModalProps) {
-  const { userProfile } = useAppStore();
+export function ReportModal({ isOpen, onClose, onOpenApiModal }: ReportModalProps) {
+  const { userProfile, agentModes } = useAppStore();
+  const activeAgentCount = Object.values(agentModes).filter(m => m !== 'off').length;
   const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null);
-  const [report, setReport] = useState<string>('');
+  const [overallReport, setOverallReport] = useState<string>('');
+  const [profileReports, setProfileReports] = useState<{id: string; name: string; report: string; dominantTrait: string}[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [displayedReport, setDisplayedReport] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [expandedItem, setExpandedItem] = useState<ExpandedItem | null>(null);
   const [itemSummary, setItemSummary] = useState<string>('');
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [allProfiles, setAllProfiles] = useState<PersonaProfile[]>([]);
+  const [lastKnownMessageCount, setLastKnownMessageCount] = useState<number>(0);
+  const [lastKnownFactCount, setLastKnownFactCount] = useState<number>(0);
 
-  // Fetch memory stats and generate report when modal opens
+  // Fetch profiles and generate report when modal opens (only if data changed)
   useEffect(() => {
     if (isOpen) {
-      generateReport();
+      checkAndRefreshReport();
     } else {
-      setReport('');
-      setDisplayedReport('');
+      // Reset expanded state when closing, but keep report cached
       setExpandedItem(null);
       setItemSummary('');
     }
   }, [isOpen]);
 
-  // Typewriter effect for report
-  useEffect(() => {
-    if (!report) return;
-    
-    let index = 0;
-    const speed = 4;
-    
-    const timer = setInterval(() => {
-      if (index < report.length) {
-        setDisplayedReport(report.slice(0, index + speed));
-        index += speed;
+  const checkAndRefreshReport = async () => {
+    try {
+      // First, fetch current stats to check if we need to regenerate
+      const currentStats = await getMemoryStats();
+      const profiles = await getAllPersonaProfiles();
+      setAllProfiles(profiles);
+      
+      const currentTotalMessages = profiles.reduce((sum, p) => sum + p.messageCount, 0);
+      const currentFactCount = currentStats.factCount;
+      
+      // Check if data has changed since last report
+      const hasNewData = currentTotalMessages !== lastKnownMessageCount || 
+                         currentFactCount !== lastKnownFactCount ||
+                         !overallReport; // Also regenerate if we don't have a report yet
+      
+      if (hasNewData) {
+        // Data changed, regenerate report
+        setLastKnownMessageCount(currentTotalMessages);
+        setLastKnownFactCount(currentFactCount);
+        generateAllReports(profiles, currentStats);
       } else {
-        setDisplayedReport(report);
-        clearInterval(timer);
+        // No changes, just update the profiles list without regenerating
+        setMemoryStats(currentStats);
       }
-    }, 16);
+    } catch (err) {
+      console.error('Failed to check for updates:', err);
+      // On error, try to generate anyway
+      fetchProfilesAndGenerateReport();
+    }
+  };
 
-    return () => clearInterval(timer);
-  }, [report]);
+  const fetchProfilesAndGenerateReport = async () => {
+    try {
+      const profiles = await getAllPersonaProfiles();
+      setAllProfiles(profiles);
+      const stats = await getMemoryStats();
+      generateAllReports(profiles, stats);
+    } catch (err) {
+      console.error('Failed to fetch profiles:', err);
+      generateAllReports([], null);
+    }
+  };
 
-  const generateReport = async () => {
+  const generateAllReports = async (profiles: PersonaProfile[], stats: MemoryStats | null) => {
     setIsGenerating(true);
-    setReport('');
-    setDisplayedReport('');
+    setOverallReport('');
+    setProfileReports([]);
 
     try {
-      const [stats, _profileSummary] = await Promise.all([
-        getMemoryStats(),
-        getUserProfileSummary(),
-      ]);
-      
-      setMemoryStats(stats);
+      if (stats) {
+        setMemoryStats(stats);
+      } else {
+        const fetchedStats = await getMemoryStats();
+        setMemoryStats(fetchedStats);
+      }
       setLastUpdated(new Date());
 
-      // Determine traits
-      const traits = userProfile ? [
-        { name: 'Logic', value: userProfile.logicWeight, agent: 'Dot', style: 'analytical' },
-        { name: 'Instinct', value: userProfile.instinctWeight, agent: 'Snap', style: 'intuitive' },
-        { name: 'Psyche', value: userProfile.psycheWeight, agent: 'Puff', style: 'introspective' },
-      ].sort((a, b) => b.value - a.value) : [];
-
-      const dominant = traits[0];
-      const secondary = traits[1];
-      const tertiary = traits[2];
-
-      // Build conversational, emergent report
-      let reportText = '';
+      // Generate overall report
+      const overall = generateOverallReport(profiles);
       
-      if (userProfile && userProfile.totalMessages > 0) {
-        const messageCount = userProfile.totalMessages;
-        const dominantPct = Math.round(dominant.value * 100);
-        
-        // Opening observation - varies based on message count
-        if (messageCount < 20) {
-          reportText += `We're still early in getting to know each other. After ${messageCount} messages from you, I'm starting to see how you think.\n\n`;
-        } else if (messageCount < 50) {
-          reportText += `I've been paying attention. Over ${messageCount} of your messages, patterns are emerging.\n\n`;
-        } else if (messageCount < 100) {
-          reportText += `We've built something here. ${messageCount} messages in, I have a solid read on how you operate.\n\n`;
-        } else {
-          reportText += `After ${messageCount} messages, I know you well. Here's what I've observed.\n\n`;
-        }
-
-        // Core observation - conversational, not clinical
-        if (dominant.name === 'Logic') {
-          if (dominantPct > 55) {
-            reportText += `You're distinctly analytical. When something comes up, your first instinct is to break it down, find the structure, understand the mechanism. ${secondary.agent} occasionally pulls you toward ${secondary.style} thinking, but ${dominant.agent}'s methodical approach is clearly home base for you.\n\n`;
-          } else {
-            reportText += `You lean analytical, but you're not rigid about it. There's a balance — you want evidence and structure, but you don't dismiss ${secondary.style} insights when they surface. ${dominant.agent} leads, but ${secondary.agent} has your ear.\n\n`;
-          }
-        } else if (dominant.name === 'Instinct') {
-          if (dominantPct > 55) {
-            reportText += `You move fast. Your gut speaks and you listen — often reaching conclusions before you've fully articulated why. There's a confidence in how you cut through noise. ${secondary.agent} provides balance, but ${dominant.agent}'s quick-fire pattern matching is your default mode.\n\n`;
-          } else {
-            reportText += `Your instincts are sharp, but you check them. You trust your gut reads, yet you're willing to slow down when the stakes are high. ${dominant.agent} leads the charge, with ${secondary.agent} as a counterweight.\n\n`;
-          }
-        } else {
-          if (dominantPct > 55) {
-            reportText += `You go deep. When something matters, you're not satisfied with surface-level understanding — you want to know the why behind the what. Motivations, meaning, the emotional truth of things. ${dominant.agent}'s introspective lens is clearly your native mode.\n\n`;
-          } else {
-            reportText += `You're drawn to meaning, but you're practical about it. There's depth to how you think, but you don't get lost in it. ${dominant.agent} asks the deeper questions while ${secondary.agent} keeps things grounded.\n\n`;
-          }
-        }
-
-        // Closing insight - forward looking
-        const tertiaryPct = Math.round(tertiary.value * 100);
-        if (tertiaryPct < 25) {
-          reportText += `One thing to consider: you don't lean much into ${tertiary.style} thinking. That's not wrong — but ${tertiary.agent} might offer perspectives you're not naturally seeking out.`;
-        } else {
-          reportText += `Your cognitive balance is healthy — you're not overly reliant on any single mode of thinking. That flexibility serves you.`;
-        }
-
-      } else {
-        reportText = `We haven't talked enough yet for me to have real observations.\n\n`;
-        reportText += `I'm not going to give you generic insights — I'll wait until I actually have something meaningful to say about how you think.\n\n`;
-        reportText += `Chat with the agents. Let them challenge you. I'll be watching, and I'll have more to offer once patterns emerge.`;
-      }
+      // Generate individual profile reports
+      const individual = profiles.map(profile => ({
+        id: profile.id,
+        name: profile.name,
+        report: generateSingleProfileReport(profile),
+        dominantTrait: profile.dominantTrait,
+      }));
 
       // Simulate thinking
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      setReport(reportText);
+      setOverallReport(overall);
+      setProfileReports(individual);
     } catch (err) {
-      console.error('Failed to generate report:', err);
-      setReport("Something went wrong generating the report. Try again.");
+      console.error('Failed to generate reports:', err);
+      setOverallReport("Something went wrong generating the report. Try again.");
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const generateOverallReport = (profiles: PersonaProfile[]): string => {
+    const totalMessages = profiles.reduce((sum, p) => sum + p.messageCount, 0);
+    
+    if (totalMessages === 0) {
+      return `We haven't talked enough yet for me to have real observations. I'm not going to give you generic insights — I'll wait until I actually have something meaningful to say about how you think.`;
+    }
+
+    let report = '';
+    
+    // Opening
+    if (totalMessages < 50) {
+      report += `Across your ${profiles.length} profiles, I've tracked ${totalMessages} messages. Patterns are beginning to emerge.`;
+    } else if (totalMessages < 150) {
+      report += `With ${totalMessages} messages across ${profiles.length} profiles, I have a solid read on how you operate in different contexts.`;
+    } else {
+      report += `${totalMessages} messages. ${profiles.length} profiles. I know you well — in all your modes.`;
+    }
+
+    // Cross-profile observation
+    const activeProfiles = profiles.filter(p => p.messageCount > 0);
+    if (activeProfiles.length > 1) {
+      const dominantTraits = activeProfiles.map(p => p.dominantTrait);
+      const uniqueDominants = [...new Set(dominantTraits)];
+      
+      if (uniqueDominants.length === 1) {
+        report += ` Interestingly, ${uniqueDominants[0]} dominates across all your active profiles. Your core thinking style persists regardless of context.`;
+      } else {
+        report += ` Your profiles show genuine cognitive diversity — you shift between ${uniqueDominants.join(', ')} depending on context. That's valuable flexibility.`;
+      }
+    }
+
+    return report;
+  };
+
+  const generateSingleProfileReport = (profile: PersonaProfile): string => {
+    const traits = [
+      { name: 'Logic', value: profile.logicWeight, agent: 'Dot', style: 'analytical' },
+      { name: 'Instinct', value: profile.instinctWeight, agent: 'Snap', style: 'intuitive' },
+      { name: 'Psyche', value: profile.psycheWeight, agent: 'Puff', style: 'introspective' },
+    ].sort((a, b) => b.value - a.value);
+
+    const dominant = traits[0];
+    const secondary = traits[1];
+    const tertiary = traits[2];
+    const dominantPct = Math.round(dominant.value * 100);
+    const tertiaryPct = Math.round(tertiary.value * 100);
+
+    let reportText = '';
+    
+    if (profile.messageCount === 0) {
+      reportText = `You haven't used the "${profile.name}" profile yet.\n\n`;
+      reportText += `This profile is ${profile.dominantTrait}-dominant by design. When you're ready to explore this mode of thinking, switch to this profile and start a conversation.\n\n`;
+      reportText += `I'll be watching and learning from day one.`;
+      return reportText;
+    }
+
+    // Opening
+    if (profile.messageCount < 20) {
+      reportText += `The "${profile.name}" profile: ${profile.messageCount} messages so far. Early days, but patterns are forming.\n\n`;
+    } else if (profile.messageCount < 50) {
+      reportText += `"${profile.name}" — ${profile.messageCount} messages in. I'm getting a clear picture.\n\n`;
+    } else {
+      reportText += `Your "${profile.name}" profile is well-established. ${profile.messageCount} messages tell a story.\n\n`;
+    }
+
+    // Core observation
+    if (dominant.name === 'Logic') {
+      if (dominantPct > 55) {
+        reportText += `In this mode, you're distinctly analytical. ${dominant.agent}'s methodical approach is your default, with ${secondary.agent} occasionally providing ${secondary.style} counterpoints.\n\n`;
+      } else {
+        reportText += `You lean analytical here, but with balance. ${dominant.agent} leads, but ${secondary.agent} has influence.\n\n`;
+      }
+    } else if (dominant.name === 'Instinct') {
+      if (dominantPct > 55) {
+        reportText += `In "${profile.name}" mode, you trust your gut. ${dominant.agent}'s quick-fire pattern matching dominates, with ${secondary.agent} as backup.\n\n`;
+      } else {
+        reportText += `Your instincts lead here, but you check them. ${dominant.agent} moves first, ${secondary.agent} validates.\n\n`;
+      }
+    } else {
+      if (dominantPct > 55) {
+        reportText += `"${profile.name}" is your introspective mode. ${dominant.agent} digs deep, asking the questions that matter.\n\n`;
+      } else {
+        reportText += `Depth characterizes this profile, but you stay practical. ${dominant.agent} explores meaning while ${secondary.agent} keeps things grounded.\n\n`;
+      }
+    }
+
+    // Closing
+    if (tertiaryPct < 25) {
+      reportText += `Worth noting: ${tertiary.style} thinking is minimal here. ${tertiary.agent} might offer perspectives you're missing in this mode.`;
+    } else {
+      reportText += `This profile shows good cognitive balance — you're not over-reliant on any single mode.`;
+    }
+
+    return reportText;
   };
 
   // Generate summary for a pattern or theme
@@ -186,16 +258,21 @@ export function ReportModal({ isOpen, onClose }: ReportModalProps) {
     setIsSummarizing(false);
   };
 
-  // Close on Escape
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
         onClose();
       }
+      // ⌘K to open API key modal
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && isOpen && onOpenApiModal) {
+        e.preventDefault();
+        onOpenApiModal();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, onOpenApiModal]);
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', { 
@@ -207,7 +284,7 @@ export function ReportModal({ isOpen, onClose }: ReportModalProps) {
     });
   };
 
-  const showDetails = !isGenerating && displayedReport.length >= report.length;
+  const showDetails = !isGenerating && overallReport.length > 0;
 
   return (
     <AnimatePresence>
@@ -232,88 +309,185 @@ export function ReportModal({ isOpen, onClose }: ReportModalProps) {
           >
             <div className="w-full max-w-lg bg-obsidian/98 backdrop-blur-xl border border-smoke/40 rounded-2xl shadow-2xl pointer-events-auto overflow-hidden max-h-[85vh] flex flex-col">
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-smoke/20 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-10 h-10 rounded-xl overflow-hidden"
-                    style={{ 
-                      boxShadow: '0 0 0 2px rgba(234, 179, 8, 0.3), 0 0 16px rgba(234, 179, 8, 0.15)',
-                    }}
-                  >
-                    <img src={governorImage} alt="Governor" className="w-full h-full object-cover" />
+              <div className="px-5 py-4 border-b border-smoke/20 flex-shrink-0">
+                {/* Top row: Title and connection status */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-10 h-10 rounded-xl overflow-hidden"
+                      style={{ 
+                        boxShadow: '0 0 0 2px rgba(234, 179, 8, 0.3), 0 0 16px rgba(234, 179, 8, 0.15)',
+                      }}
+                    >
+                      <img src={governorImage} alt="Governor" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-sans font-medium text-pearl">The Governor</h2>
+                      {/* Routing pill with hover tooltip */}
+                      <div className="relative group/routing">
+                        {activeAgentCount > 1 ? (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/20 cursor-help">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            <span className="text-[9px] font-mono text-amber-400">Routing</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-ash/10 cursor-help">
+                            <span className="w-1.5 h-1.5 rounded-full bg-ash/40" />
+                            <span className="text-[9px] font-mono text-ash/60">Direct</span>
+                          </span>
+                        )}
+                        {/* Hover tooltip */}
+                        <div className="absolute left-0 top-full mt-2 w-64 p-3 bg-obsidian border border-smoke/40 rounded-xl shadow-xl opacity-0 invisible group-hover/routing:opacity-100 group-hover/routing:visible transition-all duration-200 z-50 pointer-events-none group-hover/routing:pointer-events-auto">
+                          <p className="text-[11px] text-ash/70 font-mono leading-relaxed mb-2">
+                            {activeAgentCount > 1 
+                              ? 'Governor is routing — orchestrates agent turn-taking and prevents cognitive overload for both human and machine.'
+                              : 'Governor not routing — in single-agent mode, the Governor has no need to orchestrate.'
+                            }
+                          </p>
+                          <p className="text-[10px] text-ash/50 font-mono mb-2">
+                            Also manages your personalized knowledge-base.
+                          </p>
+                          <a 
+                            href="https://chuck-nbc.fandom.com/wiki/The_Governor"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] text-aurora/60 hover:text-aurora font-mono transition-colors cursor-pointer"
+                          >
+                            <ExternalLink className="w-2.5 h-2.5" strokeWidth={1.5} />
+                            Reference: The Governor in Chuck
+                          </a>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-sm font-sans font-medium text-pearl">The Governor's Report</h2>
-                    {lastUpdated && (
-                      <p className="text-[10px] text-ash/50 font-mono">
-                        Updated {formatDate(lastUpdated)}
-                      </p>
+                  {/* Connection status & API key - top right */}
+                  <div className="flex items-center gap-2">
+                    {userProfile?.apiKey && (
+                      <span className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span className="text-[10px] text-emerald-500/80 font-mono">Connected</span>
+                      </span>
+                    )}
+                    {onOpenApiModal && (
+                      <button
+                        onClick={onOpenApiModal}
+                        className="flex items-center gap-2 px-1.5 py-1 rounded text-ash/60 hover:text-pearl hover:bg-smoke/30 transition-colors cursor-pointer"
+                        title="Change API Key (⌘K)"
+                      >
+                        <Key className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        <kbd className="w-5 h-5 bg-smoke/30 rounded text-[9px] font-mono text-ash/50 border border-smoke/40 flex items-center justify-center">⌘K</kbd>
+                      </button>
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={onClose}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer"
-                >
-                  ESC
-                </button>
+                {/* Subtitle row */}
+                <p className="text-[10px] text-ash/50 font-mono ml-[52px]">
+                  {activeAgentCount > 1 ? 'Multi-agent orchestration active' : 'Single-agent mode'}
+                </p>
               </div>
 
               {/* Scrollable content */}
               <div className="flex-1 overflow-y-auto">
-                {/* Report Content */}
-                <div className="px-5 py-5">
+                {/* Overall Report Section */}
+                <div className="px-6 py-5 border-b border-smoke/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-xs font-mono text-ash/50 uppercase tracking-wide">Overview</span>
+                    {lastUpdated && (
+                      <span className="text-[10px] text-ash/40 font-mono">
+                        Updated on {formatDate(lastUpdated)}
+                      </span>
+                    )}
+                  </div>
                   {isGenerating ? (
-                    <div className="flex items-center gap-3 py-12 justify-center">
+                    <div className="flex items-center gap-3 py-10 justify-center">
                       <Loader2 className="w-5 h-5 text-aurora animate-spin" strokeWidth={1.5} />
                       <span className="text-sm text-ash/60 font-mono">Compiling observations...</span>
                     </div>
                   ) : (
-                    <div className="text-[13px] text-pearl/80 font-mono leading-relaxed whitespace-pre-line">
-                      {displayedReport}
-                      {displayedReport.length < report.length && (
-                        <motion.span
-                          className="inline-block ml-0.5 w-[2px] h-[15px] bg-aurora align-middle"
-                          animate={{ opacity: [1, 0.3] }}
-                          transition={{ duration: 0.4, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                      )}
-                    </div>
+                    <p className="text-[13px] text-pearl/80 font-mono leading-relaxed">
+                      {overallReport}
+                    </p>
                   )}
                 </div>
+
+                {/* Individual Profile Sections */}
+                {!isGenerating && profileReports.length > 0 && (
+                  <div className="px-6 py-5">
+                    <span className="text-xs font-mono text-ash/50 uppercase tracking-wide block mb-3">Profile Insights</span>
+                    <div className="space-y-4">
+                    {profileReports.map((pr, index) => {
+                      const traitColor = pr.dominantTrait === 'logic' ? '#00D4FF' 
+                        : pr.dominantTrait === 'instinct' ? '#EF4444' 
+                        : '#E040FB';
+                      const profile = allProfiles.find(p => p.id === pr.id);
+                      
+                      return (
+                        <motion.div
+                          key={pr.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          className="p-5 rounded-xl border border-smoke/30 bg-charcoal/20"
+                          style={{ borderLeftColor: traitColor, borderLeftWidth: '3px' }}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <span 
+                                className="text-sm font-mono font-medium"
+                                style={{ color: traitColor }}
+                              >
+                                {pr.name}
+                              </span>
+                              <span className="text-[9px] font-mono text-ash/40 uppercase">
+                                {pr.dominantTrait}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-ash/50">
+                              {profile?.messageCount || 0} messages
+                            </span>
+                          </div>
+                          <p className="text-[12px] text-pearl/70 font-mono leading-relaxed">
+                            {pr.report}
+                          </p>
+                        </motion.div>
+                      );
+                    })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Patterns - clickable */}
                 {showDetails && memoryStats && memoryStats.topPatterns.length > 0 && (
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="px-5 pb-4"
+                    className="px-6 py-5 border-t border-smoke/10"
                   >
-                    <div className="flex items-center gap-1.5 mb-2">
+                    <div className="flex items-center gap-1.5 mb-4">
                       <div className="w-1 h-3 rounded-full" style={{ backgroundColor: AGENTS.psyche.color }} />
                       <span className="text-[10px] text-ash/60 font-mono uppercase tracking-wide">Patterns observed</span>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {memoryStats.topPatterns.slice(0, 3).map((pattern, i) => {
                         const isExpanded = expandedItem?.key === `pattern-${i}`;
                         return (
                           <div key={i}>
                             <button
                               onClick={() => handleItemClick('pattern', String(i), pattern.description)}
-                              className="w-full text-left px-3 py-2 rounded-lg bg-charcoal/40 hover:bg-charcoal/60 border border-smoke/20 transition-all cursor-pointer group"
+                              className="w-full text-left px-4 py-3 rounded-lg bg-charcoal/40 hover:bg-charcoal/60 border border-smoke/20 transition-all cursor-pointer group"
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex-1">
                                   <span 
-                                    className="inline-block px-1.5 py-0.5 rounded text-[8px] font-mono font-medium uppercase mb-1"
+                                    className="inline-block px-1.5 py-0.5 rounded text-[8px] font-mono font-medium uppercase mb-2"
                                     style={{ backgroundColor: `${AGENTS.psyche.color}20`, color: AGENTS.psyche.color }}
                                   >
                                     {pattern.patternType.replace(/_/g, ' ')}
                                   </span>
-                                  <p className="text-[11px] text-pearl/70 font-mono">{pattern.description}</p>
+                                  <p className="text-[11px] text-pearl/70 font-mono leading-relaxed">{pattern.description}</p>
                                 </div>
                                 <ChevronRight 
-                                  className={`w-4 h-4 text-ash/40 group-hover:text-pearl/60 transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
+                                  className={`w-4 h-4 text-ash/40 group-hover:text-pearl/60 transition-transform ml-3 ${isExpanded ? 'rotate-90' : ''}`} 
                                   strokeWidth={1.5} 
                                 />
                               </div>
@@ -352,20 +526,20 @@ export function ReportModal({ isOpen, onClose }: ReportModalProps) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.1 }}
-                    className="px-5 pb-4"
+                    className="px-6 py-5 border-t border-smoke/10"
                   >
-                    <div className="flex items-center gap-1.5 mb-2">
+                    <div className="flex items-center gap-1.5 mb-4">
                       <div className="w-1 h-3 rounded-full" style={{ backgroundColor: AGENTS.instinct.color }} />
                       <span className="text-[10px] text-ash/60 font-mono uppercase tracking-wide">Recurring themes</span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2.5">
                       {memoryStats.topThemes.slice(0, 6).map((theme, i) => {
                         const isExpanded = expandedItem?.key === `theme-${i}`;
                         return (
                           <div key={i} className="relative">
                             <button
                               onClick={() => handleItemClick('theme', String(i), theme)}
-                              className={`px-3 py-1.5 rounded-full text-[11px] font-mono transition-all cursor-pointer ${
+                              className={`px-4 py-2 rounded-full text-[11px] font-mono transition-all cursor-pointer ${
                                 isExpanded 
                                   ? 'bg-instinct/20 border-instinct/40' 
                                   : 'hover:bg-charcoal/60'
@@ -406,26 +580,25 @@ export function ReportModal({ isOpen, onClose }: ReportModalProps) {
                     </AnimatePresence>
                   </motion.div>
                 )}
+
               </div>
 
-              {/* Stats footer - compact, no percentages */}
+              {/* Stats footer */}
               {showDetails && memoryStats && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="px-5 py-3 border-t border-smoke/20 flex-shrink-0"
-                >
+                <div className="px-5 py-3 border-t border-smoke/20 flex-shrink-0">
                   <div className="flex items-center justify-between text-[10px] font-mono text-ash/50">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                       <span>{memoryStats.factCount} facts learned</span>
+                      <span className="text-ash/30">|</span>
                       <span>{memoryStats.patternCount} patterns</span>
+                      <span className="text-ash/30">|</span>
                       <span>{memoryStats.topThemes.length} themes</span>
                     </div>
                     {userProfile && (
-                      <span>{userProfile.totalMessages} messages</span>
+                      <span>{userProfile.totalMessages} total messages</span>
                     )}
                   </div>
-                </motion.div>
+                </div>
               )}
             </div>
           </motion.div>

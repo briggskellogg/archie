@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { UserProfile, Message, Conversation, UserContext, SendMessageResult, AgentType } from '../types';
+import { UserProfile, Message, Conversation, UserContext, SendMessageResult, AgentType, PersonaProfile } from '../types';
 
 // Initialize app
 export async function initApp(): Promise<void> {
@@ -53,6 +53,84 @@ export async function saveAnthropicKey(apiKey: string): Promise<void> {
 
 export async function removeAnthropicKey(): Promise<void> {
   await invoke('remove_anthropic_key');
+}
+
+// Persona Profiles (Multi-Profile System)
+interface RawPersonaProfile {
+  id: string;
+  name: string;
+  is_default: boolean;
+  is_active: boolean;
+  dominant_trait: string;
+  secondary_trait: string;
+  instinct_weight: number;
+  logic_weight: number;
+  psyche_weight: number;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapPersonaProfile(raw: RawPersonaProfile): PersonaProfile {
+  return {
+    id: raw.id,
+    name: raw.name,
+    isDefault: raw.is_default,
+    isActive: raw.is_active,
+    dominantTrait: raw.dominant_trait as AgentType,
+    secondaryTrait: raw.secondary_trait as AgentType,
+    instinctWeight: raw.instinct_weight,
+    logicWeight: raw.logic_weight,
+    psycheWeight: raw.psyche_weight,
+    messageCount: raw.message_count || 0,
+    createdAt: new Date(raw.created_at),
+    updatedAt: new Date(raw.updated_at),
+  };
+}
+
+export async function createPersonaProfile(
+  name: string,
+  dominantTrait: AgentType,
+  secondaryTrait: AgentType,
+  isDefault: boolean
+): Promise<PersonaProfile> {
+  const raw = await invoke<RawPersonaProfile>('create_persona_profile', {
+    name,
+    dominantTrait,
+    secondaryTrait,
+    isDefault,
+  });
+  return mapPersonaProfile(raw);
+}
+
+export async function getAllPersonaProfiles(): Promise<PersonaProfile[]> {
+  const raws = await invoke<RawPersonaProfile[]>('get_all_persona_profiles');
+  return raws.map(mapPersonaProfile);
+}
+
+export async function getActivePersonaProfile(): Promise<PersonaProfile | null> {
+  const raw = await invoke<RawPersonaProfile | null>('get_active_persona_profile');
+  return raw ? mapPersonaProfile(raw) : null;
+}
+
+export async function getPersonaProfileCount(): Promise<number> {
+  return invoke<number>('get_persona_profile_count');
+}
+
+export async function setActivePersonaProfile(profileId: string): Promise<void> {
+  await invoke('set_active_persona_profile', { profileId });
+}
+
+export async function setDefaultPersonaProfile(profileId: string): Promise<void> {
+  await invoke('set_default_persona_profile', { profileId });
+}
+
+export async function updatePersonaProfileName(profileId: string, newName: string): Promise<void> {
+  await invoke('update_persona_profile_name', { profileId, newName });
+}
+
+export async function deletePersonaProfile(profileId: string): Promise<void> {
+  await invoke('delete_persona_profile', { profileId });
 }
 
 // Conversations
@@ -133,12 +211,14 @@ export async function getConversationOpener(): Promise<ConversationOpenerResult>
 export async function sendMessage(
   conversationId: string,
   userMessage: string,
-  activeAgents: AgentType[]
+  activeAgents: AgentType[],
+  discoAgents: AgentType[] = []
 ): Promise<SendMessageResult> {
   return invoke<SendMessageResult>('send_message', {
     conversationId,
     userMessage,
     activeAgents,
+    discoAgents,
   });
 }
 

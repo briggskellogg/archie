@@ -1,4 +1,6 @@
+mod anthropic;
 mod db;
+mod disco_prompts;
 mod knowledge;
 mod memory;
 mod openai;
@@ -6,7 +8,7 @@ mod orchestrator;
 
 use db::{Message, UserProfile, UserContext};
 use memory::{MemoryExtractor, ConversationSummarizer};
-use orchestrator::{Orchestrator, Agent, ResponseType, AgentResponse, evolve_weights, InteractionType, EngagementAnalyzer, apply_engagement_weights};
+use orchestrator::{Orchestrator, Agent, ResponseType, AgentResponse, evolve_weights, InteractionType, EngagementAnalyzer, IntrinsicTraitAnalyzer, combine_trait_analyses};
 use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use uuid::Uuid;
@@ -84,6 +86,48 @@ fn remove_anthropic_key() -> Result<(), String> {
     db::clear_anthropic_key().map_err(|e| e.to_string())
 }
 
+// ============ Persona Profiles ============
+
+#[tauri::command]
+fn create_persona_profile(name: String, dominant_trait: String, secondary_trait: String, is_default: bool) -> Result<db::PersonaProfile, String> {
+    db::create_persona_profile(&name, &dominant_trait, &secondary_trait, is_default).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_all_persona_profiles() -> Result<Vec<db::PersonaProfile>, String> {
+    db::get_all_persona_profiles().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_active_persona_profile() -> Result<Option<db::PersonaProfile>, String> {
+    db::get_active_persona_profile().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_persona_profile_count() -> Result<i64, String> {
+    db::get_persona_profile_count().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_active_persona_profile(profile_id: String) -> Result<(), String> {
+    db::set_active_persona_profile(&profile_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_default_persona_profile(profile_id: String) -> Result<(), String> {
+    db::set_default_persona_profile(&profile_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_persona_profile_name(profile_id: String, new_name: String) -> Result<(), String> {
+    db::update_persona_profile_name(&profile_id, &new_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_persona_profile(profile_id: String) -> Result<(), String> {
+    db::delete_persona_profile(&profile_id).map_err(|e| e.to_string())
+}
+
 // ============ Conversations ============
 
 #[tauri::command]
@@ -132,7 +176,8 @@ pub struct ConversationOpenerResult {
 #[tauri::command]
 async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
     let profile = db::get_user_profile().map_err(|e| e.to_string())?;
-    let api_key = profile.api_key.ok_or("API key not set")?;
+    let api_key = profile.api_key.ok_or("OpenAI API key not set")?;
+    let anthropic_key = profile.anthropic_key.ok_or("Anthropic API key not set")?;
     let weights = (profile.instinct_weight, profile.logic_weight, profile.psyche_weight);
     
     let recent = db::get_recent_conversations(5).map_err(|e| e.to_string())?;
@@ -140,7 +185,7 @@ async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
     // Choose opener agent based on weights with some randomness
     let agent = choose_opener_agent(weights);
     
-    let orchestrator = Orchestrator::new(&api_key);
+    let orchestrator = Orchestrator::new(&api_key, &anthropic_key);
     let content = orchestrator.generate_conversation_opener(&recent, &agent)
         .await
         .map_err(|e| e.to_string())?;
@@ -259,10 +304,12 @@ async fn send_message(
     conversation_id: String,
     user_message: String,
     active_agents: Vec<String>,
+    disco_agents: Vec<String>,
 ) -> Result<SendMessageResult, String> {
-    // Get profile for API key and weights
+    // Get profile for API keys and weights
     let profile = db::get_user_profile().map_err(|e| e.to_string())?;
-    let api_key = profile.api_key.clone().ok_or("API key not set")?;
+    let api_key = profile.api_key.clone().ok_or("OpenAI API key not set")?;
+    let anthropic_key = profile.anthropic_key.clone().ok_or("Anthropic API key not set")?;
     let initial_weights = (profile.instinct_weight, profile.logic_weight, profile.psyche_weight);
     
     if active_agents.is_empty() {
@@ -293,11 +340,22 @@ async fn send_message(
     // Get recent messages for context
     let recent_messages = db::get_recent_messages(&conversation_id, 20).map_err(|e| e.to_string())?;
     
-    // Create orchestrator
-    let orchestrator = Orchestrator::new(&api_key);
+    // Create orchestrator (OpenAI for agents, Anthropic for Governor/orchestration)
+    let orchestrator = Orchestrator::new(&api_key, &anthropic_key);
     
-    // ===== ENGAGEMENT ANALYSIS: Learn from user's response patterns =====
-    // Find previous agent responses to analyze user's engagement
+    // ===== DUAL TRAIT ANALYSIS: Intrinsic + Engagement (using Claude Opus 4.5) =====
+    
+    // 1. Intrinsic Trait Analysis: Analyze user's message itself for trait signals
+    let intrinsic_analyzer = IntrinsicTraitAnalyzer::new(&anthropic_key);
+    let intrinsic_analysis = intrinsic_analyzer.analyze(&user_message).await.ok();
+    
+    if let Some(ref intrinsic) = intrinsic_analysis {
+        println!("[TRAITS] Intrinsic signals - Logic: {:.2}, Instinct: {:.2}, Psyche: {:.2}", 
+            intrinsic.logic_signal, intrinsic.instinct_signal, intrinsic.psyche_signal);
+        println!("[TRAITS] Reasoning: {}", intrinsic.reasoning);
+    }
+    
+    // 2. Engagement Analysis: Analyze user's response to previous agent messages
     let previous_agent_responses: Vec<(Agent, String)> = recent_messages
         .iter()
         .rev() // Most recent first
@@ -308,30 +366,42 @@ async fn send_message(
         })
         .collect();
     
-    // If there were previous agent responses, analyze engagement
-    if !previous_agent_responses.is_empty() {
+    let engagement_analysis = if !previous_agent_responses.is_empty() {
         println!("[WEIGHTS] Analyzing engagement with {} previous agent responses", previous_agent_responses.len());
         
-        let engagement_analyzer = EngagementAnalyzer::new(&api_key);
-        if let Ok(analysis) = engagement_analyzer.analyze_engagement(&user_message, &previous_agent_responses).await {
+        let engagement_analyzer = EngagementAnalyzer::new(&anthropic_key);
+        let result = engagement_analyzer.analyze_engagement(&user_message, &previous_agent_responses).await.ok();
+        
+        if let Some(ref analysis) = result {
             println!("[WEIGHTS] Engagement scores - Logic: {:.2}, Instinct: {:.2}, Psyche: {:.2}", 
                 analysis.logic_score, analysis.instinct_score, analysis.psyche_score);
             println!("[WEIGHTS] Reasoning: {}", analysis.reasoning);
-            
-            // Apply engagement weights with de-exponential rigidity
-            let current_weights = db::get_user_profile()
-                .map(|p| (p.instinct_weight, p.logic_weight, p.psyche_weight))
-                .unwrap_or(initial_weights);
-            
-            let new_weights = apply_engagement_weights(current_weights, &analysis, profile.total_messages);
-            
-            let variability = 1.0 / (1.0 + (profile.total_messages as f64 / 100.0).powf(1.5));
-            println!("[WEIGHTS] Variability at {} messages: {:.4}", profile.total_messages, variability);
-            println!("[WEIGHTS] Updated weights - Instinct: {:.3}, Logic: {:.3}, Psyche: {:.3}", 
-                new_weights.0, new_weights.1, new_weights.2);
-            
-            db::update_weights(new_weights.0, new_weights.1, new_weights.2).map_err(|e| e.to_string())?;
         }
+        result
+    } else {
+        None
+    };
+    
+    // 3. Combine both analyses (intrinsic 30%, engagement 70%) with disco dampening
+    if intrinsic_analysis.is_some() || engagement_analysis.is_some() {
+        let current_weights = db::get_user_profile()
+            .map(|p| (p.instinct_weight, p.logic_weight, p.psyche_weight))
+            .unwrap_or(initial_weights);
+        
+        let new_weights = combine_trait_analyses(
+            current_weights,
+            engagement_analysis.as_ref(),
+            intrinsic_analysis.as_ref(),
+            &disco_agents,
+            profile.total_messages,
+        );
+        
+        let variability = 1.0 / (1.0 + (profile.total_messages as f64 / 100.0).powf(1.5));
+        println!("[WEIGHTS] Variability at {} messages: {:.4}", profile.total_messages, variability);
+        println!("[WEIGHTS] Combined weights - Instinct: {:.3}, Logic: {:.3}, Psyche: {:.3}", 
+            new_weights.0, new_weights.1, new_weights.2);
+        
+        db::update_weights(new_weights.0, new_weights.1, new_weights.2).map_err(|e| e.to_string())?;
     }
     
     // ===== MEMORY SYSTEM: Grounding Decision =====
@@ -356,6 +426,7 @@ async fn send_message(
             initial_weights, 
             &active_agents,
             user_profile.as_ref(),
+            &disco_agents,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -369,6 +440,12 @@ async fn send_message(
         .ok_or_else(|| format!("Invalid agent: {}", decision.primary_agent))?;
     agents_involved.push(primary_agent.as_str().to_string());
     
+    // Check if primary agent is in disco mode
+    let primary_is_disco = disco_agents.contains(&primary_agent.as_str().to_string());
+    if primary_is_disco {
+        println!("[DISCO] {} is in DISCO MODE - using extreme prompts", primary_agent.as_str());
+    }
+    
     let primary_response = orchestrator
         .get_agent_response_with_grounding(
             primary_agent,
@@ -379,6 +456,8 @@ async fn send_message(
             None,
             grounding.as_ref(),
             user_profile.as_ref(),
+            primary_is_disco,
+            false, // primary_is_disco for pushback (N/A for primary response)
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -403,7 +482,7 @@ async fn send_message(
         references_message_id: None,
     });
     
-    // Update weights for primary agent
+    // Update weights for primary agent (disco dampening now applied at engagement analysis stage)
     let new_weights = evolve_weights(initial_weights, primary_agent, InteractionType::ChosenAsPrimary, profile.total_messages);
     db::update_weights(new_weights.0, new_weights.1, new_weights.2).map_err(|e| e.to_string())?;
     let mut final_weights = new_weights;
@@ -428,6 +507,12 @@ async fn send_message(
                     _ => None,
                 };
                 
+                // Check if secondary agent is in disco mode
+                let secondary_is_disco = disco_agents.contains(&secondary_agent.as_str().to_string());
+                if secondary_is_disco {
+                    println!("[DISCO] {} is in DISCO MODE - using extreme prompts", secondary_agent.as_str());
+                }
+                
                 let secondary_response = orchestrator
                     .get_agent_response_with_grounding(
                         secondary_agent,
@@ -438,6 +523,8 @@ async fn send_message(
                         Some(primary_agent.as_str()),
                         grounding.as_ref(),
                         user_profile.as_ref(),
+                        secondary_is_disco,
+                        primary_is_disco, // Pass whether primary was in disco mode for subtle pushback
                     )
                     .await
                     .map_err(|e| e.to_string())?;
@@ -461,12 +548,119 @@ async fn send_message(
                     references_message_id: Some(primary_msg_id.clone()),
                 });
                 
-                // Update weights for secondary agent
+                // Update weights for secondary agent (disco dampening now applied at engagement analysis stage)
                 let weights_after_primary = (new_weights.0, new_weights.1, new_weights.2);
                 let secondary_weights = evolve_weights(weights_after_primary, secondary_agent, InteractionType::ChosenAsSecondary, profile.total_messages);
                 db::update_weights(secondary_weights.0, secondary_weights.1, secondary_weights.2).map_err(|e| e.to_string())?;
                 final_weights = secondary_weights;
                 had_secondary = true;
+                
+                // ===== MULTI-TURN DEBATE LOOP (for Disco Mode) =====
+                // Only continue if there are disco agents active
+                if !disco_agents.is_empty() && response_type != ResponseType::Addition {
+                    let mut responses_so_far: Vec<(String, String)> = vec![
+                        (primary_agent.as_str().to_string(), primary_response.clone()),
+                        (secondary_agent.as_str().to_string(), secondary_response.clone()),
+                    ];
+                    
+                    let mut last_response = secondary_response.clone();
+                    let mut last_agent = secondary_agent.as_str().to_string();
+                    let mut last_agent_disco = secondary_is_disco;
+                    let mut last_msg_id = secondary_msg.id.clone();
+                    let mut current_weights = final_weights;
+                    
+                    // Try to continue debate (up to 4 more responses, max 6 total)
+                    for turn in 0..4 {
+                        let response_count = responses_so_far.len();
+                        
+                        let (should_continue, next_agent_str, next_type) = orchestrator
+                            .should_continue_debate(
+                                &user_message,
+                                &responses_so_far,
+                                &active_agents,
+                                &disco_agents,
+                                response_count,
+                            )
+                            .await
+                            .unwrap_or((false, None, None));
+                        
+                        if !should_continue {
+                            println!("[DEBATE] Ending after {} responses (turn {})", response_count, turn);
+                            break;
+                        }
+                        
+                        if let Some(next_agent_name) = next_agent_str {
+                            if let Some(next_agent) = Agent::from_str(&next_agent_name) {
+                                agents_involved.push(next_agent.as_str().to_string());
+                                
+                                let next_response_type = next_type
+                                    .as_ref()
+                                    .and_then(|t| ResponseType::from_str(t))
+                                    .unwrap_or(ResponseType::Rebuttal);
+                                
+                                let next_is_disco = disco_agents.contains(&next_agent.as_str().to_string());
+                                
+                                println!("[DEBATE] Turn {}: {} responding (disco: {})", turn + 1, next_agent.as_str(), next_is_disco);
+                                
+                                let next_response = orchestrator
+                                    .get_agent_response_with_grounding(
+                                        next_agent,
+                                        &user_message,
+                                        &recent_messages,
+                                        next_response_type,
+                                        Some(&last_response),
+                                        Some(&last_agent),
+                                        grounding.as_ref(),
+                                        user_profile.as_ref(),
+                                        next_is_disco,
+                                        last_agent_disco,
+                                    )
+                                    .await
+                                    .map_err(|e| e.to_string())?;
+                                
+                                // Save debate response
+                                let next_msg_id = Uuid::new_v4().to_string();
+                                let next_msg = Message {
+                                    id: next_msg_id.clone(),
+                                    conversation_id: conversation_id.clone(),
+                                    role: next_agent.as_str().to_string(),
+                                    content: next_response.clone(),
+                                    response_type: Some(next_response_type.as_str().to_string()),
+                                    references_message_id: Some(last_msg_id.clone()),
+                                    timestamp: Utc::now().to_rfc3339(),
+                                };
+                                db::save_message(&next_msg).map_err(|e| e.to_string())?;
+                                
+                                responses.push(AgentResponse {
+                                    agent: next_agent.as_str().to_string(),
+                                    content: next_response.clone(),
+                                    response_type: next_response_type.as_str().to_string(),
+                                    references_message_id: Some(last_msg_id.clone()),
+                                });
+                                
+                                // Update weights (disco dampening now applied at engagement analysis stage)
+                                let debate_weights = evolve_weights(current_weights, next_agent, InteractionType::ChosenAsSecondary, profile.total_messages);
+                                db::update_weights(debate_weights.0, debate_weights.1, debate_weights.2).map_err(|e| e.to_string())?;
+                                current_weights = debate_weights;
+                                final_weights = debate_weights;
+                                
+                                // Update for next iteration
+                                responses_so_far.push((next_agent.as_str().to_string(), next_response.clone()));
+                                last_response = next_response;
+                                last_agent = next_agent.as_str().to_string();
+                                last_agent_disco = next_is_disco;
+                                last_msg_id = next_msg_id;
+                                
+                                // Intensify debate mode if we're continuing
+                                if response_count >= 4 {
+                                    debate_mode = Some("intense".to_string());
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -688,6 +882,14 @@ pub fn run() {
             remove_api_key,
             save_anthropic_key,
             remove_anthropic_key,
+            create_persona_profile,
+            get_all_persona_profiles,
+            get_active_persona_profile,
+            get_persona_profile_count,
+            set_active_persona_profile,
+            set_default_persona_profile,
+            update_persona_profile_name,
+            delete_persona_profile,
             create_conversation,
             get_recent_conversations,
             get_conversation_messages,

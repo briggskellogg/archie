@@ -1,6 +1,9 @@
 // Agent types
 export type AgentType = 'instinct' | 'logic' | 'psyche';
 
+// Agent mode: off, on, or disco (extreme mode inspired by Disco Elysium)
+export type AgentMode = 'off' | 'on' | 'disco';
+
 export type ResponseType = 'primary' | 'addition' | 'rebuttal' | 'debate';
 
 export interface AgentConfig {
@@ -24,6 +27,7 @@ export interface Message {
   referencesMessageId?: string;
   timestamp: Date;
   isStreaming?: boolean;
+  isDisco?: boolean;  // Whether this message was generated in Disco Mode
 }
 
 // Agent response from backend
@@ -49,7 +53,7 @@ export interface SendMessageResult {
   weight_change: WeightChangeNotification | null;
 }
 
-// User profile
+// User profile (API keys and message count)
 export interface UserProfile {
   id: number;
   apiKey: string | null;
@@ -58,6 +62,22 @@ export interface UserProfile {
   logicWeight: number;
   psycheWeight: number;
   totalMessages: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Persona profile (multi-profile system for different user states)
+export interface PersonaProfile {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  isActive: boolean;
+  dominantTrait: AgentType;
+  secondaryTrait: AgentType;
+  instinctWeight: number;
+  logicWeight: number;
+  psycheWeight: number;
+  messageCount: number;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,148 +1,33 @@
 # Intersect
 
-**Multi-agent AI companion for macOS** — powered by OpenAI GPT-4o and Anthropic Claude.
+## The Problem
 
-Think with three minds. Decide with clarity.
+I wanted a way to think through decisions without getting stuck in my own head. Every AI assistant I tried felt one-dimensional — either too logical, too agreeable, or too detached from how I actually think.
 
----
+What I needed was **multiple perspectives in one place** — something that could challenge me, support me, and help me see angles I'd miss on my own.
 
-## What is Intersect?
+## The Process
 
-Intersect is a native macOS app that gives you access to three distinct AI perspectives in a single conversation. Whether you're making decisions, exploring ideas, or seeking balanced advice — Intersect's agents work together (and sometimes debate) to give you a fuller picture.
+I built Intersect for one specific workflow: **thinking out loud**.
 
-**Meet the Agents:**
+When I have a decision to make, an idea to explore, or something I need to work through — I don't want one voice. I want three. I type what I'm thinking, and three distinct minds respond: one for gut instinct, one for logic, one for the deeper "why."
 
-- 🔥 **Snap** (Instinct) — Gut feelings, intuition, pattern recognition
-- 🧠 **Dot** (Logic) — Analytical thinking, structured reasoning, evidence-based conclusions  
-- 💜 **Puff** (Psyche) — Self-awareness, emotional depth, the "why" behind the "what"
+They agree. They disagree. Sometimes they debate.
 
-**Features:**
+The best thinking happens when you're not the only one in the room.
 
-- 🎭 **Intelligent turn-taking** — The Governor orchestrates who responds and when
-- 💬 **Dynamic debates** — Agents can agree, add context, or challenge each other
-- 🧬 **Learns your style** — Weights evolve based on your engagement patterns
-- 🔒 **Local-first** — Your conversations stay on your device
-- ⌨️ **Keyboard shortcuts** — Power-user friendly
-- 🎨 **Beautiful UI** — Dark, minimal, Apple-like design
+## The Product
 
----
+Intersect is a native macOS app powered by [OpenAI GPT-4o](https://openai.com) and [Anthropic Claude](https://anthropic.com). It gives you three AI perspectives — Snap (instinct), Dot (logic), and Puff (psyche) — orchestrated by a Governor that decides who speaks and when.
 
-## Getting Started
+Your data stays on your device. The agents learn your patterns over time.
 
-### Step 1: Download
+I built this for myself, but you can use it too.
 
-[Download Intersect](https://github.com/briggskellogg/intersect/releases/latest)
-
-1. Download `Intersect.dmg` from the latest release
-2. Open the DMG file
-3. Drag **Intersect** into your **Applications** folder
-4. Open Intersect from Applications (you may need to right-click → Open the first time)
-
-### Step 2: Get API Keys
-
-Intersect requires two API keys:
-
-**OpenAI (powers the agents):**
-1. Go to [platform.openai.com](https://platform.openai.com) and create an account
-2. Navigate to **API Keys** → [Create new key](https://platform.openai.com/api-keys)
-3. Copy your key (starts with `sk-`)
-
-**Anthropic (powers the Governor):**
-1. Go to [console.anthropic.com](https://console.anthropic.com) and create an account
-2. Navigate to **Settings → API Keys** → [Create key](https://console.anthropic.com/settings/keys)
-3. Copy your key (starts with `sk-ant-`)
-
-### Step 3: Start Chatting
-
-1. Enter both API keys when prompted
-2. Start a conversation — the Governor will route your message to the right agent(s)
-3. Watch as agents respond, build on each other, or respectfully disagree
+If you'd like to try it and don't know how to download it: **[me@briggskellogg.com](mailto:me@briggskellogg.com)**
 
 ---
 
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| ⌘ + N | New conversation |
-| ⌘ + P | Open profile |
-| Enter | Send message |
-| Esc | Close modal |
-
----
-
-## How It Works
-
-### The Governor
-
-The Governor (powered by Claude) acts as an orchestration layer. It decides:
-- Which agent should respond first
-- Whether a second agent should add context or challenge
-- When to trigger a debate between perspectives
-
-### Weight Evolution
-
-Your agent weights start at 50% Logic, 30% Psyche, 20% Instinct. As you chat, Intersect analyzes your engagement patterns:
-- Following up on an agent's suggestion? Their weight increases.
-- Dismissing or disagreeing? Their weight decreases.
-- The system becomes more rigid over time — after thousands of messages, your profile stabilizes.
-
-### Memory System
-
-Intersect extracts facts and patterns from your conversations, building a profile that helps agents give more personalized responses over time.
-
----
-
-## Building from Source
-
-### Prerequisites
-
-- **macOS** 12.0 or later
-- **Node.js** 18+ ([download](https://nodejs.org))
-- **Rust** ([install via rustup](https://rustup.rs))
-- **Xcode Command Line Tools** (`xcode-select --install`)
-
-### Build Steps
-
-```bash
-# Clone the repository
-git clone https://github.com/briggskellogg/intersect.git
-cd intersect
-
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run tauri dev
-
-# Or build for production
-npm run tauri build
-```
-
-The built app will be in `src-tauri/target/release/bundle/`.
-
----
-
-## FAQ
-
-**Q: Is my data sent to the cloud?**  
-A: Messages are sent to OpenAI/Anthropic for processing. Your conversation history and profile are stored locally on your device.
-
-**Q: Does it work offline?**  
-A: No, Intersect requires an internet connection for AI responses.
-
-**Q: How much does it cost?**  
-A: Intersect itself is free. You pay OpenAI and Anthropic directly for API usage.
-
-**Q: Can I reset my profile?**  
-A: Yes — open Profile (⌘+P) and use the reset option in the star chart.
-
----
-
-## License
-
-MIT — do whatever you want with it.
-
----
-
-Made with ❤️ by [Briggs Kellogg](https://briggskellogg.com)
+<p align="center">
+  <a href="https://briggskellogg.com">briggskellogg.com</a>
+</p>

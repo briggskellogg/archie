@@ -47,7 +47,7 @@ export const USER_PROFILES: Record<AgentType, string> = {
   psyche: psycheProfile,
 };
 
-export const AGENT_ORDER: AgentType[] = ['instinct', 'logic', 'psyche'];
+export const AGENT_ORDER: AgentType[] = ['psyche', 'logic', 'instinct'];
 
 // Governor - system agent for admin/error messages
 export const GOVERNOR = {

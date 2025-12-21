@@ -1,23 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Key, Info, RotateCcw, ExternalLink, AlertTriangle, FileText, BadgeCheck, ChevronDown } from 'lucide-react';
+import { RotateCcw, ExternalLink, AlertTriangle, Star, Edit2, ChevronDown, Calendar } from 'lucide-react';
 import { useAppStore } from '../store';
 import { AGENTS, USER_PROFILES } from '../constants/agents';
-import { resetAllData, getUserProfile } from '../hooks/useTauri';
+import { 
+  resetAllData, 
+  getUserProfile, 
+  getAllPersonaProfiles,
+  updatePersonaProfileName,
+  setDefaultPersonaProfile,
+  setActivePersonaProfile as setActivePersonaProfileBackend,
+} from '../hooks/useTauri';
 import { ApiKeyModal } from './ApiKeyModal';
 import bekLogo from '../assets/BEK.png';
-import governorImage from '../assets/governor.png';
 import governorTransparent from '../assets/governor-transparent.png';
 
 interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
-  onRequestReport?: () => void;
-  activeAgentCount?: number;
 }
 
 // Radar chart component for agent weights with profile pictures
-function RadarChart({ weights }: { weights: { instinct: number; logic: number; psyche: number } }) {
+function RadarChart({ weights, targetWeights }: { weights: { instinct: number; logic: number; psyche: number }; targetWeights?: { instinct: number; logic: number; psyche: number } }) {
+  // Use targetWeights for dominance calculation (instant), weights for animation
+  const dominanceWeights = targetWeights || weights;
   const size = 280;
   const center = size / 2;
   const radius = 85; // Slightly larger for better visual impact
@@ -176,8 +182,8 @@ function RadarChart({ weights }: { weights: { instinct: number; logic: number; p
       {agents.map(({ id, label, weight }) => {
         const typeLabels = { instinct: 'Instinct', logic: 'Logic', psyche: 'Psyche' };
         const imgSize = getImageSize(weight);
-        // Check if this is the dominant trait
-        const isDominant = weight === Math.max(weights.instinct, weights.logic, weights.psyche);
+        // Check if this is the dominant trait (using target weights for instant highlight)
+        const isDominant = dominanceWeights[id] === Math.max(dominanceWeights.instinct, dominanceWeights.logic, dominanceWeights.psyche);
         
         return (
           <div
@@ -189,15 +195,30 @@ function RadarChart({ weights }: { weights: { instinct: number; logic: number; p
             }}
           >
             <div className="relative">
+              {/* Subtle pulsing gold ring for dominant trait - never fully fades */}
+              {isDominant && (
+                <motion.div
+                  className="absolute inset-0 rounded-full z-10"
+                  style={{ 
+                    boxShadow: '0 0 0 3px #EAB308',
+                  }}
+                  animate={{ 
+                    opacity: [0.65, 0.9, 0.65],
+                  }}
+                  transition={{ 
+                    duration: 3,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
+                />
+              )}
               <div
-                className={`rounded-full overflow-hidden border-2 transition-all duration-300 ${isDominant ? 'ring-2 ring-offset-2 ring-offset-obsidian' : ''}`}
+                className="rounded-full overflow-hidden border-2 transition-all duration-300 relative z-0"
                 style={{
                   width: imgSize,
                   height: imgSize,
-                  borderColor: AGENTS[id].color,
-                  boxShadow: `0 0 ${8 + weight * 8}px ${AGENTS[id].color}${Math.round(40 + weight * 30).toString(16)}`,
-                  // @ts-expect-error Tailwind CSS variable
-                  '--tw-ring-color': isDominant ? AGENTS[id].color : 'transparent',
+                  borderColor: isDominant ? 'transparent' : AGENTS[id].color,
+                  boxShadow: isDominant ? 'none' : `0 0 ${8 + weight * 8}px ${AGENTS[id].color}${Math.round(40 + weight * 30).toString(16)}`,
                 }}
               >
                 <img
@@ -206,28 +227,24 @@ function RadarChart({ weights }: { weights: { instinct: number; logic: number; p
                   className="w-full h-full object-cover"
                 />
               </div>
-              {/* Dominant trait badge */}
-              {isDominant && (
-                <div 
-                  className="absolute top-0 right-0 w-5 h-5 rounded-full flex items-center justify-center shadow-lg z-20"
-                  style={{ backgroundColor: AGENTS[id].color }}
-                >
-                  <BadgeCheck className="w-4 h-4 text-obsidian" strokeWidth={2.5} />
-                </div>
-              )}
             </div>
-            <span 
-              className="text-xs font-mono mt-1"
-              style={{ color: AGENTS[id].color }}
-            >
-              {Math.round(weight * 100)}%
-            </span>
-            <span 
-              className="text-[10px] font-mono opacity-60"
-              style={{ color: AGENTS[id].color }}
-            >
-              {typeLabels[id]}
-            </span>
+            <div className="flex items-center gap-1.5 mt-2">
+              <span 
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                style={{ 
+                  backgroundColor: `${AGENTS[id].color}20`,
+                  color: AGENTS[id].color,
+                }}
+              >
+                {typeLabels[id]}
+              </span>
+              <span 
+                className="text-[10px] font-mono opacity-70"
+                style={{ color: AGENTS[id].color }}
+              >
+                {Math.round(weight * 100)}%
+              </span>
+            </div>
           </div>
         );
       })}
@@ -361,17 +378,145 @@ function getProfileDescription(weights: { instinct: number; logic: number; psych
   };
 }
 
-export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 3 }: SettingsProps) {
-  const { userProfile, clearMessages, setCurrentConversation, setUserProfile, apiConnectionError } = useAppStore();
+export function Settings({ isOpen, onClose }: SettingsProps) {
+  const { 
+    userProfile, 
+    clearMessages, 
+    setCurrentConversation, 
+    setUserProfile, 
+    allPersonaProfiles,
+    setAllPersonaProfiles,
+    setActivePersonaProfile,
+  } = useAppStore();
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showApiModal, setShowApiModal] = useState(false);
-  const [showGovernorDetails, setShowGovernorDetails] = useState(false);
-  // Handle ESC key to close
+  const [editingProfileName, setEditingProfileName] = useState<string | null>(null);
+  const [tempProfileName, setTempProfileName] = useState('');
+  const [profilesExpanded, setProfilesExpanded] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!profilesExpanded) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setProfilesExpanded(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [profilesExpanded]);
+  
+  // Animated weights for smooth transitions
+  const [animatedWeights, setAnimatedWeights] = useState({
+    logic: userProfile?.logicWeight ?? 0.4,
+    instinct: userProfile?.instinctWeight ?? 0.3,
+    psyche: userProfile?.psycheWeight ?? 0.3,
+  });
+  
+  // Animate weight transitions when profile changes
+  useEffect(() => {
+    if (!userProfile) return;
+    
+    const targetWeights = {
+      logic: userProfile.logicWeight,
+      instinct: userProfile.instinctWeight,
+      psyche: userProfile.psycheWeight,
+    };
+    
+    const startWeights = { ...animatedWeights };
+    const duration = 500; // ms
+    const startTime = performance.now();
+    
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease-out cubic for smooth deceleration
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      setAnimatedWeights({
+        logic: startWeights.logic + (targetWeights.logic - startWeights.logic) * eased,
+        instinct: startWeights.instinct + (targetWeights.instinct - startWeights.instinct) * eased,
+        psyche: startWeights.psyche + (targetWeights.psyche - startWeights.psyche) * eased,
+      });
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    
+    requestAnimationFrame(animate);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.logicWeight, userProfile?.instinctWeight, userProfile?.psycheWeight]);
+  
+  // Load profiles when opened
+  useEffect(() => {
+    if (isOpen) {
+      getAllPersonaProfiles().then(setAllPersonaProfiles).catch(console.error);
+    }
+  }, [isOpen, setAllPersonaProfiles]);
+  
+  const handleSaveProfileName = async (profileId: string) => {
+    if (!tempProfileName.trim()) return;
+    try {
+      await updatePersonaProfileName(profileId, tempProfileName.trim());
+      const profiles = await getAllPersonaProfiles();
+      setAllPersonaProfiles(profiles);
+      const activeProfile = profiles.find(p => p.isActive);
+      if (activeProfile) setActivePersonaProfile(activeProfile);
+      setEditingProfileName(null);
+    } catch (err) {
+      console.error('Failed to update profile name:', err);
+    }
+  };
+  
+  const handleSetDefault = async (profileId: string) => {
+    try {
+      await setDefaultPersonaProfile(profileId);
+      const profiles = await getAllPersonaProfiles();
+      setAllPersonaProfiles(profiles);
+    } catch (err) {
+      console.error('Failed to set default profile:', err);
+    }
+  };
+  
+  
+  const handleSwitchProfile = async (profileId: string) => {
+    const currentActive = allPersonaProfiles.find(p => p.isActive);
+    if (currentActive?.id === profileId) return;
+    
+    try {
+      await setActivePersonaProfileBackend(profileId);
+      const profiles = await getAllPersonaProfiles();
+      setAllPersonaProfiles(profiles);
+      const activeProfile = profiles.find(p => p.isActive);
+      if (activeProfile) {
+        setActivePersonaProfile(activeProfile);
+        // Refresh user profile to get updated weights for the star chart
+        const updatedUserProfile = await getUserProfile();
+        setUserProfile(updatedUserProfile);
+        // Clear messages and start fresh with new profile
+        clearMessages();
+        setCurrentConversation(null);
+      }
+    } catch (err) {
+      console.error('Failed to switch profile:', err);
+    }
+  };
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
         onClose();
+      }
+      // ⌘K to open API key modal
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && isOpen) {
+        e.preventDefault();
+        setShowApiModal(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -384,10 +529,8 @@ export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 
       await resetAllData();
       clearMessages();
       setCurrentConversation(null);
-      // Set profile to null to trigger API key modal
-      setUserProfile(null);
       onClose();
-      // Reload the page to reset state
+      // Reload the page to reset state (API keys are preserved)
       window.location.reload();
     } catch (err) {
       console.error('Failed to reset:', err);
@@ -420,143 +563,31 @@ export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-smoke/30 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <h2 className="font-sans text-base text-ivory font-medium">Profile</h2>
-                {/* Connection status */}
-                {userProfile?.apiKey && !apiConnectionError && (
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span className="text-[10px] text-emerald-500/80 font-mono">Connected</span>
-                  </span>
-                )}
-                {apiConnectionError && (
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    <span className="text-[10px] text-red-400/80 font-mono">Error</span>
-                  </span>
-                )}
-                {/* API key edit button */}
-                <button
-                  onClick={() => setShowApiModal(true)}
-                  className="p-1 rounded text-ash/60 hover:text-pearl hover:bg-smoke/30 transition-colors cursor-pointer"
-                  title="Change API Key"
-                >
-                  <Key className="w-3.5 h-3.5" strokeWidth={1.5} />
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onClose}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer"
-                >
-                  ESC
-                </button>
-              </div>
+              <h2 className="font-sans text-base text-ivory font-medium">Profile</h2>
+              {/* ESC button */}
+              <button
+                onClick={onClose}
+                className="p-1 rounded text-[10px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer aspect-square flex items-center justify-center"
+              >
+                ESC
+              </button>
             </div>
 
             <div className="p-4 space-y-5 flex-1 overflow-y-auto">
-              {/* Governor Card - Compact with expandable details */}
-              <section className="relative overflow-hidden rounded-xl border border-smoke/30 bg-gradient-to-br from-charcoal/60 to-obsidian/60">
-                <div className="p-3">
-                  {/* Header with status - always visible */}
-                  <div className="flex items-center gap-3">
-                    <img 
-                      src={governorImage} 
-                      alt="Governor" 
-                      className="w-9 h-9 rounded-lg flex-shrink-0"
-                      style={{ 
-                        boxShadow: activeAgentCount > 1 
-                          ? '0 0 0 2px rgba(16, 185, 129, 0.4), 0 0 12px rgba(16, 185, 129, 0.2)'
-                          : '0 0 0 1px rgba(100, 100, 100, 0.3)',
-                      }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-sans font-medium text-pearl">Governor</span>
-                        {activeAgentCount > 1 ? (
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[9px] font-mono text-emerald-400">Routing</span>
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-ash/10">
-                            <span className="w-1.5 h-1.5 rounded-full bg-ash/40" />
-                            <span className="text-[9px] font-mono text-ash/60">Direct</span>
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-ash/50 font-mono truncate">
-                        {activeAgentCount > 1 ? 'Multi-agent orchestration active' : 'Single-agent mode'}
-                      </p>
-                    </div>
-                    {/* Report button */}
-                    {onRequestReport && (
-                      <button
-                        onClick={() => {
-                          onClose();
-                          onRequestReport();
-                        }}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono text-ash bg-smoke/30 hover:bg-aurora/20 hover:text-aurora border border-smoke/40 transition-colors cursor-pointer flex-shrink-0"
-                        title="Get Governor Report"
-                      >
-                        <FileText className="w-3 h-3" strokeWidth={1.5} />
-                        Report
-                      </button>
-                    )}
-                    {/* Expand/collapse button */}
-                    <button
-                      onClick={() => setShowGovernorDetails(!showGovernorDetails)}
-                      className="p-1.5 rounded-lg hover:bg-smoke/20 text-ash/50 hover:text-pearl transition-all cursor-pointer flex-shrink-0"
-                    >
-                      <ChevronDown 
-                        className={`w-4 h-4 transition-transform duration-200 ${showGovernorDetails ? 'rotate-180' : ''}`} 
-                        strokeWidth={1.5} 
-                      />
-                    </button>
-                  </div>
-                  
-                  {/* Expandable details */}
-                  <AnimatePresence>
-                    {showGovernorDetails && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="pt-3 mt-3 border-t border-smoke/20">
-                          <p className="text-[11px] text-ash/60 font-mono leading-relaxed mb-2">
-                            Orchestrates agent turn-taking and prevents cognitive overload for both human and machine — ensuring balanced, coherent conversations. Also manages your personalized knowledge-base.
-                          </p>
-                          <a 
-                            href="https://chuck-nbc.fandom.com/wiki/The_Governor"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] text-aurora/60 hover:text-aurora font-mono transition-colors cursor-pointer"
-                          >
-                            <ExternalLink className="w-2.5 h-2.5" strokeWidth={1.5} />
-                            Reference: The Governor in Chuck
-                          </a>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </section>
 
               {/* Agent weights - Radar chart */}
               {userProfile && (
                 <section>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs text-ash font-mono">
-                      {formatDate(userProfile.createdAt)}
+                    <span className="text-xs text-ash font-mono flex items-center gap-1.5">
+                      <Calendar className="w-3 h-3 text-ash/60" strokeWidth={1.5} />
+                      Created on {formatDate(userProfile.createdAt)}
                     </span>
                     <span className="text-xs text-ash font-mono">{userProfile.totalMessages} messages</span>
                   </div>
                   
                   <div 
-                    className="rounded-xl pt-6 pb-3 px-4 border border-smoke/30 relative overflow-hidden"
+                    className="rounded-xl pt-4 pb-3 px-4 border border-smoke/30 relative overflow-hidden"
                     style={{
                       // Dynamic gradient based on INVERTED weights (lower = more dominant)
                       // Colors: Logic #00D4FF, Psyche #E040FB, Instinct #EF4444
@@ -576,18 +607,6 @@ export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 
                       })(),
                     }}
                   >
-                    {/* Info tooltip in top left */}
-                    <div 
-                      className="absolute top-2 left-2 z-20 p-1.5 rounded-lg text-ash/40 hover:text-ash transition-colors group cursor-help"
-                      title="Evolves based on your interactions"
-                    >
-                      <Info className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      {/* Tooltip on hover */}
-                      <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-charcoal border border-smoke/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                        <span className="text-[10px] text-ash font-mono">Evolves based on your interactions</span>
-                      </div>
-                    </div>
-                    
                     {/* Reset button in top right */}
                     <button
                       onClick={() => setShowResetConfirm(true)}
@@ -596,6 +615,176 @@ export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 
                     >
                       <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
                     </button>
+                    
+                    {/* Profile selector - top left */}
+                    {allPersonaProfiles.length > 0 && (() => {
+                      const activeProfile = allPersonaProfiles.find(p => p.isActive);
+                      const otherProfiles = allPersonaProfiles.filter(p => !p.isActive);
+                      
+                      return (
+                        <div ref={profileDropdownRef} className="absolute top-2 left-2 z-20">
+                          {/* Active profile - clickable */}
+                          {activeProfile && (
+                            <div className="relative">
+                              <div
+                                className="relative flex items-center gap-2 w-[160px] px-3 py-1 rounded-full bg-obsidian/50 border border-amber-500/40 hover:bg-obsidian/70 cursor-pointer transition-colors"
+                                onClick={() => {
+                                  if (editingProfileName !== activeProfile.id) {
+                                    setProfilesExpanded(!profilesExpanded);
+                                  }
+                                }}
+                              >
+                                {/* Star on left - filled if default, clickable to set default if not */}
+                                {activeProfile.isDefault ? (
+                                  <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="#EAB308" strokeWidth={0} />
+                                ) : (
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSetDefault(activeProfile.id);
+                                    }}
+                                    className="p-0.5 -m-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-amber-500 transition-colors cursor-pointer flex-shrink-0"
+                                    title="Set as default"
+                                  >
+                                    <Star className="w-3 h-3" />
+                                  </div>
+                                )}
+                                
+                                {/* Name - color coded */}
+                                {editingProfileName === activeProfile.id ? (
+                                  <input
+                                    type="text"
+                                    value={tempProfileName}
+                                    onChange={(e) => setTempProfileName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleSaveProfileName(activeProfile.id);
+                                      if (e.key === 'Escape') setEditingProfileName(null);
+                                    }}
+                                    onBlur={() => handleSaveProfileName(activeProfile.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="bg-transparent border-none px-0 py-0 text-xs font-mono text-ivory outline-none flex-1 min-w-0"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <span 
+                                    className="text-xs font-mono truncate flex-1 min-w-0"
+                                    style={{ color: AGENTS[activeProfile.dominantTrait as keyof typeof AGENTS]?.color || '#e5e7eb' }}
+                                  >
+                                    {activeProfile.name}
+                                  </span>
+                                )}
+                                
+                                {/* Edit button */}
+                                {editingProfileName !== activeProfile.id && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingProfileName(activeProfile.id);
+                                      setTempProfileName(activeProfile.name);
+                                    }}
+                                    className="p-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-ash transition-colors cursor-pointer flex-shrink-0"
+                                    title="Edit name"
+                                  >
+                                    <Edit2 className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                                
+                                <ChevronDown 
+                                  className={`w-3 h-3 text-ash/50 flex-shrink-0 transition-transform ${profilesExpanded ? 'rotate-180' : ''}`} 
+                                />
+                              </div>
+                              
+                              {/* Dropdown for other profiles */}
+                              <AnimatePresence>
+                                {profilesExpanded && otherProfiles.length > 0 && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.15 }}
+                                    className="absolute left-0 top-full mt-1 w-[160px] overflow-hidden rounded-lg bg-obsidian/90 border border-smoke/30 shadow-lg"
+                                  >
+                                <div className="py-1">
+                                  {otherProfiles.map((profile) => (
+                                    <div
+                                      key={profile.id}
+                                      onClick={() => {
+                                        if (editingProfileName !== profile.id) {
+                                          handleSwitchProfile(profile.id);
+                                        }
+                                      }}
+                                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-smoke/20 cursor-pointer transition-colors"
+                                    >
+                                      {/* Star on the left */}
+                                      {profile.isDefault ? (
+                                        <Star className="w-2.5 h-2.5 text-amber-500 flex-shrink-0" fill="#EAB308" strokeWidth={0} />
+                                      ) : (
+                                        <div
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSetDefault(profile.id);
+                                          }}
+                                          className="p-0.5 -m-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-amber-500 transition-colors cursor-pointer flex-shrink-0"
+                                          title="Set as default"
+                                        >
+                                          <Star className="w-2.5 h-2.5" />
+                                        </div>
+                                      )}
+                                      
+                                      {/* Name with truncation - color coded by dominant trait */}
+                                      {editingProfileName === profile.id ? (
+                                        <input
+                                          type="text"
+                                          value={tempProfileName}
+                                          onChange={(e) => setTempProfileName(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleSaveProfileName(profile.id);
+                                            if (e.key === 'Escape') setEditingProfileName(null);
+                                          }}
+                                          onBlur={() => handleSaveProfileName(profile.id)}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="bg-obsidian/60 border border-smoke/40 rounded px-1.5 py-0.5 text-xs font-mono text-ivory outline-none flex-1 min-w-0"
+                                          autoFocus
+                                        />
+                                      ) : (
+                                        <span 
+                                          className="text-xs font-mono truncate flex-1 min-w-0"
+                                          style={{ color: AGENTS[profile.dominantTrait as keyof typeof AGENTS]?.color || '#e5e7eb' }}
+                                        >
+                                          {profile.name}
+                                        </span>
+                                      )}
+                                      
+                                      {/* Edit button */}
+                                      {editingProfileName !== profile.id && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingProfileName(profile.id);
+                                            setTempProfileName(profile.name);
+                                          }}
+                                          className="p-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-ash transition-colors cursor-pointer flex-shrink-0"
+                                          title="Edit name"
+                                        >
+                                          <Edit2 className="w-2.5 h-2.5" />
+                                        </button>
+                                      )}
+                                      
+                                      {/* Message count */}
+                                      <span className="text-[9px] font-mono text-ash/40 flex-shrink-0">
+                                        {profile.messageCount}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     
                     {/* Subtle radial overlay for depth */}
                     <div 
@@ -617,13 +806,18 @@ export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 
                         })(),
                       }}
                     />
-                    <div className="relative z-10 pt-8">
+                    <div className="relative z-10 pt-20">
                       <RadarChart 
                         weights={{
+                          instinct: animatedWeights.instinct,
+                          logic: animatedWeights.logic,
+                          psyche: animatedWeights.psyche,
+                        }}
+                        targetWeights={{
                           instinct: userProfile.instinctWeight,
                           logic: userProfile.logicWeight,
                           psyche: userProfile.psycheWeight,
-                        }} 
+                        }}
                       />
                     </div>
                     
@@ -683,12 +877,14 @@ export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 
                             <ExternalLink className="w-2.5 h-2.5" strokeWidth={1.5} />
                             Inspired by 16personalities.com
                           </a>
+                          
                         </div>
                       );
                     })()}
                   </div>
                 </section>
               )}
+
 
             </div>
 
@@ -748,7 +944,7 @@ export function Settings({ isOpen, onClose, onRequestReport, activeAgentCount = 
                   </div>
                   
                   <p className="text-sm text-silver font-mono mb-4">
-                    All conversations, learned context, and agent weights will be permanently deleted.
+                    All conversations, learned context, profile names, and agent weights will be permanently reset. API keys will be preserved.
                   </p>
                   
                   <div className="flex gap-2">

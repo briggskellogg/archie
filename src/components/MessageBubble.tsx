@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import { BadgeCheck } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { Message, AgentType } from '../types';
 import { AGENTS, USER_PROFILES, GOVERNOR } from '../constants/agents';
 import { useAppStore } from '../store';
@@ -11,31 +11,8 @@ interface MessageBubbleProps {
   isLatest?: boolean;
 }
 
-// Get dominant agent based on weights
-function getDominantAgent(profile: { instinctWeight: number; logicWeight: number; psycheWeight: number } | null): AgentType {
-  if (!profile) return 'logic';
-  
-  const weights = {
-    instinct: profile.instinctWeight,
-    logic: profile.logicWeight,
-    psyche: profile.psycheWeight,
-  };
-  
-  let max: AgentType = 'logic';
-  let maxWeight = 0;
-  
-  for (const [agent, weight] of Object.entries(weights)) {
-    if (weight > maxWeight) {
-      maxWeight = weight;
-      max = agent as AgentType;
-    }
-  }
-  
-  return max;
-}
-
 export function MessageBubble({ message, isLatest: _isLatest }: MessageBubbleProps) {
-  const { userProfile } = useAppStore();
+  const { activePersonaProfile } = useAppStore();
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const agent = isUser ? null : isSystem ? GOVERNOR : AGENTS[message.role as AgentType];
@@ -99,10 +76,9 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
     return () => clearInterval(typingInterval);
   }, [message.id, message.content, isUser, message.role]);
   
-  // Get user's dominant agent for their profile photo
-  const dominantAgent = getDominantAgent(userProfile);
+  // Get user's dominant agent from active persona profile for their profile photo
+  const dominantAgent: AgentType = activePersonaProfile?.dominantTrait || 'logic';
   const userAvatar = USER_PROFILES[dominantAgent];
-  const userColor = AGENTS[dominantAgent].color;
   
   return (
     <motion.div
@@ -115,37 +91,52 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
       <div className={`flex gap-2 items-start ${isUser ? 'flex-row-reverse' : ''}`}>
         {/* Agent avatar - aligned with name tag (slight offset from top) */}
         {agent && (
-          <div 
-            className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden mt-[7px]"
-            style={{ boxShadow: `0 0 0 2px ${agent.color}40` }}
-          >
-            <img 
-              src={agent.avatar} 
-              alt={agent.name}
-              className="w-full h-full object-cover"
-            />
+          <div className="relative flex-shrink-0 mt-[7px]">
+            <div 
+              className="w-8 h-8 rounded-full overflow-hidden"
+              style={{ boxShadow: `0 0 0 2px ${message.isDisco ? '#EAB308' : agent.color}40` }}
+            >
+              <img 
+                src={agent.avatar} 
+                alt={agent.name}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            {/* Disco mode sparkles badge - top right, like verification badge */}
+            {message.isDisco && (
+              <div 
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center bg-amber-500 z-10"
+              >
+                <Sparkles className="w-2.5 h-2.5 text-obsidian" strokeWidth={2.5} />
+              </div>
+            )}
           </div>
         )}
 
-        {/* User avatar - aligned with message content, with checkmark badge */}
+        {/* User avatar - aligned with message content, with pulsing gold border */}
         {isUser && (
           <div className="relative flex-shrink-0 mt-2">
-            <div 
-              className="w-8 h-8 rounded-full overflow-hidden"
-              style={{ boxShadow: `0 0 0 2px ${userColor}40` }}
-            >
+            {/* Subtle pulsing gold ring - never fully fades */}
+            <motion.div
+              className="absolute inset-0 rounded-full"
+              style={{ 
+                boxShadow: '0 0 0 2px #EAB308',
+              }}
+              animate={{ 
+                opacity: [0.65, 0.9, 0.65],
+              }}
+              transition={{ 
+                duration: 3,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+            <div className="w-8 h-8 rounded-full overflow-hidden relative z-10">
               <img 
                 src={userAvatar} 
                 alt="You"
                 className="w-full h-full object-cover"
               />
-            </div>
-            {/* Verified checkmark badge */}
-            <div
-              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center shadow-lg"
-              style={{ backgroundColor: userColor }}
-            >
-              <BadgeCheck className="w-3 h-3 text-obsidian" strokeWidth={2.5} />
             </div>
           </div>
         )}
@@ -162,7 +153,7 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
           {/* Agent name tag - compact */}
           {!isUser && !isSystem && agent && (
             <span 
-              className="inline-block px-1.5 py-px rounded text-[9px] font-mono font-medium mb-1"
+              className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-medium mb-1.5"
               style={{ 
                 backgroundColor: `${agent.color}20`,
                 color: agent.color,

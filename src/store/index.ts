@@ -1,16 +1,22 @@
 import { create } from 'zustand';
-import { Message, UserProfile, Conversation, AgentType, DebateMode } from '../types';
+import { Message, UserProfile, PersonaProfile, Conversation, AgentType, AgentMode, DebateMode } from '../types';
 
-interface AgentToggleState {
-  instinct: boolean;
-  logic: boolean;
-  psyche: boolean;
+interface AgentModeState {
+  instinct: AgentMode;
+  logic: AgentMode;
+  psyche: AgentMode;
 }
 
 interface AppState {
-  // User profile
+  // User profile (API keys, message count)
   userProfile: UserProfile | null;
   setUserProfile: (profile: UserProfile | null) => void;
+  
+  // Active persona profile (multi-profile system)
+  activePersonaProfile: PersonaProfile | null;
+  setActivePersonaProfile: (profile: PersonaProfile | null) => void;
+  allPersonaProfiles: PersonaProfile[];
+  setAllPersonaProfiles: (profiles: PersonaProfile[]) => void;
   
   // Current conversation
   currentConversation: Conversation | null;
@@ -22,10 +28,18 @@ interface AppState {
   setMessages: (messages: Message[]) => void;
   clearMessages: () => void;
   
-  // Agent toggles
-  activeAgents: AgentToggleState;
-  toggleAgent: (agent: AgentType) => void;
+  // Agent modes (off -> on -> disco -> off)
+  agentModes: AgentModeState;
+  cycleAgentMode: (agent: AgentType) => void;
+  toggleAllDisco: () => void;
   getActiveAgentsList: () => AgentType[];
+  getDiscoAgents: () => AgentType[];
+  isAgentActive: (agent: AgentType) => boolean;
+  isAgentDisco: (agent: AgentType) => boolean;
+  
+  // Legacy compatibility
+  activeAgents: { instinct: boolean; logic: boolean; psyche: boolean };
+  toggleAgent: (agent: AgentType) => void;
   
   // Debate mode
   debateMode: DebateMode;
@@ -55,9 +69,15 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  // User profile
+  // User profile (API keys, message count)
   userProfile: null,
   setUserProfile: (profile) => set({ userProfile: profile }),
+  
+  // Active persona profile (multi-profile system)
+  activePersonaProfile: null,
+  setActivePersonaProfile: (profile) => set({ activePersonaProfile: profile }),
+  allPersonaProfiles: [],
+  setAllPersonaProfiles: (profiles) => set({ allPersonaProfiles: profiles }),
   
   // Current conversation
   currentConversation: null,
@@ -71,35 +91,99 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMessages: (messages) => set({ messages }),
   clearMessages: () => set({ messages: [] }),
   
-  // Agent toggles
-  activeAgents: {
-    instinct: true,
-    logic: true,
-    psyche: true,
+  // Agent modes (3-state: off -> on -> disco -> off)
+  agentModes: {
+    instinct: 'on',
+    logic: 'on',
+    psyche: 'on',
   },
-  toggleAgent: (agent) => set((state) => {
-    const currentActive = Object.values(state.activeAgents).filter(Boolean).length;
-    const isTogglingOff = state.activeAgents[agent];
+  
+  cycleAgentMode: (agent) => set((state) => {
+    const currentMode = state.agentModes[agent];
+    const activeCount = Object.values(state.agentModes).filter(m => m !== 'off').length;
     
-    // Prevent disabling last agent
-    if (isTogglingOff && currentActive <= 1) {
-      return state;
+    // Determine next mode in cycle: off -> on -> disco -> off
+    let nextMode: AgentMode;
+    if (currentMode === 'off') {
+      nextMode = 'on';
+    } else if (currentMode === 'on') {
+      nextMode = 'disco';
+    } else {
+      // disco -> off, but prevent if it's the last active agent
+      if (activeCount <= 1) {
+        nextMode = 'on'; // Can't turn off, cycle back to on
+      } else {
+        nextMode = 'off';
+      }
     }
     
     return {
-      activeAgents: {
-        ...state.activeAgents,
-        [agent]: !state.activeAgents[agent],
+      agentModes: {
+        ...state.agentModes,
+        [agent]: nextMode,
       },
     };
   }),
+  
+  toggleAllDisco: () => set((state) => {
+    // Count how many active agents are in disco mode
+    const activeAgents = Object.entries(state.agentModes).filter(([, mode]) => mode !== 'off');
+    const discoCount = activeAgents.filter(([, mode]) => mode === 'disco').length;
+    
+    // If all active agents are in disco mode, turn all disco off (to 'on')
+    // Otherwise, turn all active agents to disco mode
+    const allInDisco = discoCount === activeAgents.length && activeAgents.length > 0;
+    
+    return {
+      agentModes: {
+        instinct: state.agentModes.instinct === 'off' ? 'off' : (allInDisco ? 'on' : 'disco'),
+        logic: state.agentModes.logic === 'off' ? 'off' : (allInDisco ? 'on' : 'disco'),
+        psyche: state.agentModes.psyche === 'off' ? 'off' : (allInDisco ? 'on' : 'disco'),
+      },
+    };
+  }),
+  
   getActiveAgentsList: () => {
     const state = get();
     const agents: AgentType[] = [];
-    if (state.activeAgents.instinct) agents.push('instinct');
-    if (state.activeAgents.logic) agents.push('logic');
-    if (state.activeAgents.psyche) agents.push('psyche');
+    if (state.agentModes.instinct !== 'off') agents.push('instinct');
+    if (state.agentModes.logic !== 'off') agents.push('logic');
+    if (state.agentModes.psyche !== 'off') agents.push('psyche');
     return agents;
+  },
+  
+  getDiscoAgents: () => {
+    const state = get();
+    const agents: AgentType[] = [];
+    if (state.agentModes.instinct === 'disco') agents.push('instinct');
+    if (state.agentModes.logic === 'disco') agents.push('logic');
+    if (state.agentModes.psyche === 'disco') agents.push('psyche');
+    return agents;
+  },
+  
+  isAgentActive: (agent) => {
+    const state = get();
+    return state.agentModes[agent] !== 'off';
+  },
+  
+  isAgentDisco: (agent) => {
+    const state = get();
+    return state.agentModes[agent] === 'disco';
+  },
+  
+  // Legacy compatibility - computed from agentModes
+  get activeAgents() {
+    const state = get();
+    return {
+      instinct: state.agentModes.instinct !== 'off',
+      logic: state.agentModes.logic !== 'off',
+      psyche: state.agentModes.psyche !== 'off',
+    };
+  },
+  
+  toggleAgent: (agent) => {
+    // Legacy toggle just cycles the mode
+    get().cycleAgentMode(agent);
   },
   
   // Debate mode
