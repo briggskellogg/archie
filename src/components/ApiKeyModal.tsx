@@ -349,7 +349,10 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
                       <Mic className="w-4 h-4 text-aurora" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-sans text-pearl font-medium">ElevenLabs <span className="text-ash/50 font-mono text-[10px]">(optional)</span></h3>
+                      <h3 className="text-sm font-sans text-pearl font-medium flex items-center gap-2">
+                        ElevenLabs
+                        <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full text-[9px] font-mono font-medium">OPTIONAL</span>
+                      </h3>
                       <p className="text-[10px] text-ash/60 font-mono">Voice transcription</p>
                     </div>
                   </div>

@@ -1,6 +1,6 @@
 [package]
 name = "intersect"
-version = "1.2.1"
+version = "1.3.3"
 description = "Intersect - Multi-Agent AI Companion"
 authors = ["Briggs Kellogg"]
 edition = "2021"
