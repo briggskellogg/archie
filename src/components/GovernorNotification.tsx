@@ -54,7 +54,7 @@ export function GovernorNotification({ message, isVisible, onDismiss, actionLabe
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -20, scale: 0.95 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed top-16 right-4 z-50 max-w-xs"
+          className="fixed top-16 right-4 z-50 w-80"
         >
           <div 
             className="bg-obsidian/95 backdrop-blur-xl border border-smoke/50 rounded-xl shadow-2xl overflow-hidden"
@@ -126,9 +126,14 @@ export function GovernorNotification({ message, isVisible, onDismiss, actionLabe
                   {actionLabel && onAction && (
                     <button
                       onClick={handleAction}
-                      className="mt-2.5 w-full px-3 py-2 text-[10px] font-mono font-medium rounded-lg bg-aurora/20 text-aurora hover:bg-aurora/30 transition-colors cursor-pointer text-center"
+                      className="mt-2.5 w-full px-3 py-2 text-[10px] font-mono font-medium rounded-lg bg-aurora/20 text-aurora hover:bg-aurora/30 transition-colors cursor-pointer flex items-center justify-center gap-2"
                     >
                       {actionLabel}
+                      {actionLabel === 'Open Profile' && (
+                        <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-charcoal/80 border border-smoke/50 rounded text-[9px] font-mono text-ash/80">
+                          <span className="text-[8px]">⌘</span>P
+                        </kbd>
+                      )}
                     </button>
                   )}
                 </>

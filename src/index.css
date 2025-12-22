@@ -279,6 +279,11 @@ textarea:focus-visible {
   50% { opacity: 0.6; }
 }
 
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }

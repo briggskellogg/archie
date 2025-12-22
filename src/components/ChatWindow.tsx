@@ -1173,10 +1173,12 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           {/* Microphone button - voice transcription */}
           <motion.button
             onClick={toggleTranscription}
-            className={`flex items-center gap-1.5 px-2 py-2 rounded-lg transition-all cursor-pointer ${
-              isTranscribing || isConnecting
+            className={`flex items-center gap-1.5 px-2 py-2 rounded-lg cursor-pointer transition-colors duration-300 ${
+              isTranscribing 
                 ? 'text-emerald-400' 
-                : 'text-ash/50 hover:text-ash'
+                : isConnecting
+                  ? 'text-amber-400'
+                  : 'text-ash/50 hover:text-ash'
             }`}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -1184,12 +1186,14 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           >
             <div className="relative">
               <Mic className="w-5 h-5" strokeWidth={1.5} />
-              {/* Pulsing dot - faster when connecting, slower when connected */}
+              {/* Status dot - color transitions smoothly via CSS */}
               {(isConnecting || isTranscribing) && (
-                <motion.div
-                  className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400"
-                  animate={{ opacity: [0.4, 1, 0.4] }}
-                  transition={{ duration: isConnecting ? 0.4 : 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                <div 
+                  className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full transition-colors duration-300"
+                  style={{ 
+                    backgroundColor: isTranscribing ? '#22c55e' : '#eab308',
+                    animation: 'pulse-opacity 1s ease-in-out infinite'
+                  }}
                 />
               )}
             </div>
