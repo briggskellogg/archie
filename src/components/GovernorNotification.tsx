@@ -7,9 +7,11 @@ interface GovernorNotificationProps {
   message: string;
   isVisible: boolean;
   onDismiss: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
-export function GovernorNotification({ message, isVisible, onDismiss }: GovernorNotificationProps) {
+export function GovernorNotification({ message, isVisible, onDismiss, actionLabel, onAction }: GovernorNotificationProps) {
   const [phase, setPhase] = useState<'thinking' | 'showing'>('thinking');
 
   useEffect(() => {
@@ -29,13 +31,20 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
   useEffect(() => {
     if (phase !== 'showing') return;
 
-    // Auto-dismiss after 4 seconds
+    // Auto-dismiss after 6 seconds (longer if there's an action button)
     const dismissTimer = setTimeout(() => {
       onDismiss();
-    }, 4000);
+    }, actionLabel ? 6000 : 4000);
 
     return () => clearTimeout(dismissTimer);
-  }, [phase, onDismiss]);
+  }, [phase, onDismiss, actionLabel]);
+
+  const handleAction = () => {
+    if (onAction) {
+      onAction();
+    }
+    onDismiss();
+  };
 
   return (
     <AnimatePresence>
@@ -87,7 +96,7 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
                     e.stopPropagation();
                     onDismiss();
                   }}
-                  className="ml-auto p-0.5 rounded text-ash/50 hover:text-ash transition-colors"
+                  className="ml-auto p-0.5 rounded text-ash/50 hover:text-ash transition-colors cursor-pointer"
                 >
                   <X className="w-3 h-3" strokeWidth={2} />
                 </button>
@@ -99,9 +108,19 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
               {phase === 'thinking' ? (
                 <p className="text-[11px] text-ash/60 font-mono">Thinking...</p>
               ) : (
-                <p className="text-[11px] text-pearl/90 font-mono leading-relaxed">
-                  {message}
-                </p>
+                <>
+                  <p className="text-[11px] text-pearl/90 font-mono leading-relaxed">
+                    {message}
+                  </p>
+                  {actionLabel && onAction && (
+                    <button
+                      onClick={handleAction}
+                      className="mt-2 px-3 py-1.5 text-[10px] font-mono font-medium rounded-lg bg-aurora/20 text-aurora hover:bg-aurora/30 transition-colors cursor-pointer"
+                    >
+                      {actionLabel}
+                    </button>
+                  )}
+                </>
               )}
             </div>
 
@@ -110,7 +129,7 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
               <motion.div
                 initial={{ scaleX: 1 }}
                 animate={{ scaleX: 0 }}
-                transition={{ duration: 4, ease: 'linear' }}
+                transition={{ duration: actionLabel ? 6 : 4, ease: 'linear' }}
                 className="h-0.5 origin-left"
                 style={{ backgroundColor: GOVERNOR.color }}
               />
@@ -121,4 +140,3 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
     </AnimatePresence>
   );
 }
-

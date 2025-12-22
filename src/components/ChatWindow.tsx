@@ -66,7 +66,11 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   const dominantAgent: AgentType = activePersonaProfile?.dominantTrait || 'logic';
   
   const [inputValue, setInputValue] = useState('');
-  const [governorNotification, setGovernorNotification] = useState<string | null>(null);
+  const [governorNotification, setGovernorNotification] = useState<{
+    message: string;
+    actionLabel?: string;
+    onAction?: () => void;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasInitialized = useRef(false);
@@ -237,7 +241,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       
       // User wants to archive and close
       isClosingRef.current = true;
-      setGovernorNotification("Archiving conversation to long-term memory...");
+      setGovernorNotification({ message: "Archiving conversation to long-term memory..." });
       
       try {
         await finalizeConversation(currentConversation.id);
@@ -292,18 +296,18 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     if (recoveryNeeded && recoveryNeeded.status === 'recovery_needed' && recoveryNeeded.recoveredCount > 0) {
       const runRecovery = async () => {
         const count = recoveryNeeded.recoveredCount;
-        setGovernorNotification(
-          `Recovering ${count} conversation${count > 1 ? 's' : ''} from last session...`
-        );
+        setGovernorNotification({
+          message: `Recovering ${count} conversation${count > 1 ? 's' : ''} from last session...`
+        });
         
         try {
           await recoverConversations();
-          setGovernorNotification(
-            `Memory updated with ${count} recovered conversation${count > 1 ? 's' : ''}.`
-          );
+          setGovernorNotification({
+            message: `Memory updated with ${count} recovered conversation${count > 1 ? 's' : ''}.`
+          });
         } catch (err) {
           console.error('Failed to recover conversations:', err);
-          setGovernorNotification('Failed to recover some conversations.');
+          setGovernorNotification({ message: 'Failed to recover some conversations.' });
         }
         
         // Clear recovery state
@@ -317,7 +321,11 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   // Toggle transcription handler
   const toggleTranscription = useCallback(async () => {
     if (!effectiveElevenLabsKey) {
-      setGovernorNotification('Set your ElevenLabs API key in Settings to use voice transcription.');
+      setGovernorNotification({
+        message: 'Add your ElevenLabs API key to enable voice transcription.',
+        actionLabel: 'Open Settings',
+        onAction: onOpenSettings,
+      });
       return;
     }
     
@@ -330,7 +338,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         console.error('Failed to start transcription:', err);
       }
     }
-  }, [effectiveElevenLabsKey, isTranscribing, startTranscription, stopTranscription, setGovernorNotification]);
+  }, [effectiveElevenLabsKey, isTranscribing, startTranscription, stopTranscription, onOpenSettings]);
   
   // Global keyboard shortcuts (Command + key)
   useEffect(() => {
@@ -511,7 +519,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       
       // Show weight change notification from Governor as toast
       if (result.weight_change) {
-        setGovernorNotification(result.weight_change.message);
+        setGovernorNotification({ message: result.weight_change.message });
       }
       
       // Refresh user profile to update weights and message count in UI
@@ -646,9 +654,9 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       }
       
       if (result.weight_change) {
-        setGovernorNotification(result.weight_change.message);
+        setGovernorNotification({ message: result.weight_change.message });
       }
-      
+
       try {
         const updatedProfile = await getUserProfile();
         setUserProfile(updatedProfile);
@@ -687,7 +695,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     
     // Finalize the previous conversation before starting a new one
     if (currentConversation && messages.length > 1) {
-      setGovernorNotification("Sorting this conversation into long-term memory...");
+      setGovernorNotification({ message: "Sorting this conversation into long-term memory..." });
       // Fire and forget - don't block the UI
       finalizeConversation(currentConversation.id).catch(err => 
         console.error('Failed to finalize conversation:', err)
@@ -761,9 +769,11 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       
       {/* Governor notification toast */}
       <GovernorNotification
-        message={governorNotification || ''}
+        message={governorNotification?.message || ''}
         isVisible={!!governorNotification}
         onDismiss={() => setGovernorNotification(null)}
+        actionLabel={governorNotification?.actionLabel}
+        onAction={governorNotification?.onAction}
       />
       
       {/* Header - Clean, centered logo with space for macOS window controls */}
