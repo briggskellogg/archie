@@ -675,17 +675,6 @@ pub fn get_recent_conversations(limit: usize) -> Result<Vec<Conversation>> {
     })
 }
 
-pub fn update_conversation_title(id: &str, title: &str) -> Result<()> {
-    let now = Utc::now().to_rfc3339();
-    with_connection(|conn| {
-        conn.execute(
-            "UPDATE conversations SET title = ?1, updated_at = ?2 WHERE id = ?3",
-            params![title, now, id]
-        )?;
-        Ok(())
-    })
-}
-
 /// Append to the limbo summary (incremental summary built during conversation)
 pub fn append_limbo_summary(conversation_id: &str, new_content: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339();
@@ -727,32 +716,6 @@ pub fn mark_conversation_processed(conversation_id: &str, final_summary: Option<
             )?;
         }
         Ok(())
-    })
-}
-
-/// Get unprocessed conversations (for finalization on startup if needed)
-pub fn get_unprocessed_conversations() -> Result<Vec<Conversation>> {
-    with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "SELECT id, title, summary, limbo_summary, processed, created_at, updated_at 
-             FROM conversations 
-             WHERE processed = 0
-             ORDER BY updated_at DESC"
-        )?;
-        
-        let convs = stmt.query_map([], |row| {
-            Ok(Conversation {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                summary: row.get(2)?,
-                limbo_summary: row.get(3)?,
-                processed: row.get::<_, i64>(4)? != 0,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-            })
-        })?;
-        
-        convs.collect()
     })
 }
 
@@ -847,18 +810,6 @@ pub fn clear_conversation_messages(conversation_id: &str) -> Result<()> {
 
 // ============ User Context ============
 
-pub fn save_user_context(key: &str, value: &str, confidence: f64, source_agent: Option<&str>) -> Result<()> {
-    let now = Utc::now().to_rfc3339();
-    with_connection(|conn| {
-        conn.execute(
-            "INSERT OR REPLACE INTO user_context (key, value, confidence, source_agent, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![key, value, confidence, source_agent, now]
-        )?;
-        Ok(())
-    })
-}
-
 pub fn get_all_user_context() -> Result<Vec<UserContext>> {
     with_connection(|conn| {
         let mut stmt = conn.prepare(
@@ -941,58 +892,6 @@ pub fn get_all_user_facts() -> Result<Vec<UserFact>> {
     })
 }
 
-pub fn get_user_facts_by_category(category: &str) -> Result<Vec<UserFact>> {
-    with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "SELECT id, category, key, value, confidence, source_type, source_conversation_id, first_mentioned, last_confirmed, mention_count
-             FROM user_facts WHERE category = ?1 ORDER BY confidence DESC"
-        )?;
-        
-        let facts = stmt.query_map([category], |row| {
-            Ok(UserFact {
-                id: row.get(0)?,
-                category: row.get(1)?,
-                key: row.get(2)?,
-                value: row.get(3)?,
-                confidence: row.get(4)?,
-                source_type: row.get(5)?,
-                source_conversation_id: row.get(6)?,
-                first_mentioned: row.get(7)?,
-                last_confirmed: row.get(8)?,
-                mention_count: row.get(9)?,
-            })
-        })?;
-        
-        facts.collect()
-    })
-}
-
-pub fn get_high_confidence_facts(min_confidence: f64) -> Result<Vec<UserFact>> {
-    with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "SELECT id, category, key, value, confidence, source_type, source_conversation_id, first_mentioned, last_confirmed, mention_count
-             FROM user_facts WHERE confidence >= ?1 ORDER BY confidence DESC"
-        )?;
-        
-        let facts = stmt.query_map([min_confidence], |row| {
-            Ok(UserFact {
-                id: row.get(0)?,
-                category: row.get(1)?,
-                key: row.get(2)?,
-                value: row.get(3)?,
-                confidence: row.get(4)?,
-                source_type: row.get(5)?,
-                source_conversation_id: row.get(6)?,
-                first_mentioned: row.get(7)?,
-                last_confirmed: row.get(8)?,
-                mention_count: row.get(9)?,
-            })
-        })?;
-        
-        facts.collect()
-    })
-}
-
 // ============ User Patterns ============
 
 pub fn save_user_pattern(pattern: &UserPattern) -> Result<()> {
@@ -1055,48 +954,6 @@ pub fn get_all_user_patterns() -> Result<Vec<UserPattern>> {
     })
 }
 
-pub fn get_patterns_by_type(pattern_type: &str) -> Result<Vec<UserPattern>> {
-    with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "SELECT id, pattern_type, description, confidence, evidence, first_observed, last_updated, observation_count
-             FROM user_patterns WHERE pattern_type = ?1 ORDER BY confidence DESC"
-        )?;
-        
-        let patterns = stmt.query_map([pattern_type], |row| {
-            Ok(UserPattern {
-                id: row.get(0)?,
-                pattern_type: row.get(1)?,
-                description: row.get(2)?,
-                confidence: row.get(3)?,
-                evidence: row.get(4)?,
-                first_observed: row.get(5)?,
-                last_updated: row.get(6)?,
-                observation_count: row.get(7)?,
-            })
-        })?;
-        
-        patterns.collect()
-    })
-}
-
-pub fn decay_low_confidence_patterns(threshold: f64, decay_amount: f64) -> Result<usize> {
-    with_connection(|conn| {
-        // Decay patterns that haven't been observed recently
-        let affected = conn.execute(
-            "UPDATE user_patterns SET confidence = MAX(0.1, confidence - ?1) WHERE confidence < ?2",
-            params![decay_amount, threshold]
-        )?;
-        
-        // Delete patterns with very low confidence and few observations
-        conn.execute(
-            "DELETE FROM user_patterns WHERE confidence < 0.2 AND observation_count < 3",
-            []
-        )?;
-        
-        Ok(affected)
-    })
-}
-
 // ============ Conversation Summaries ============
 
 pub fn save_conversation_summary(summary: &ConversationSummary) -> Result<()> {
@@ -1146,31 +1003,6 @@ pub fn get_conversation_summary(conversation_id: &str) -> Result<Option<Conversa
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
         }
-    })
-}
-
-pub fn get_recent_conversation_summaries(limit: usize) -> Result<Vec<ConversationSummary>> {
-    with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "SELECT id, conversation_id, summary, key_topics, emotional_tone, user_state, agents_involved, message_count, created_at
-             FROM conversation_summaries ORDER BY created_at DESC LIMIT ?1"
-        )?;
-        
-        let summaries = stmt.query_map([limit], |row| {
-            Ok(ConversationSummary {
-                id: row.get(0)?,
-                conversation_id: row.get(1)?,
-                summary: row.get(2)?,
-                key_topics: row.get(3)?,
-                emotional_tone: row.get(4)?,
-                user_state: row.get(5)?,
-                agents_involved: row.get(6)?,
-                message_count: row.get(7)?,
-                created_at: row.get(8)?,
-            })
-        })?;
-        
-        summaries.collect()
     })
 }
 
@@ -1462,17 +1294,6 @@ pub fn update_persona_profile_name(profile_id: &str, new_name: &str) -> Result<(
         conn.execute(
             "UPDATE persona_profiles SET name = ?1, updated_at = ?2 WHERE id = ?3",
             params![new_name, now, profile_id]
-        )?;
-        Ok(())
-    })
-}
-
-pub fn update_persona_profile_weights(profile_id: &str, instinct: f64, logic: f64, psyche: f64) -> Result<()> {
-    let now = Utc::now().to_rfc3339();
-    with_connection(|conn| {
-        conn.execute(
-            "UPDATE persona_profiles SET instinct_weight = ?1, logic_weight = ?2, psyche_weight = ?3, updated_at = ?4 WHERE id = ?5",
-            params![instinct, logic, psyche, now, profile_id]
         )?;
         Ok(())
     })

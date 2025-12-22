@@ -119,26 +119,3 @@ impl OpenAIClient {
     }
 }
 
-// Helper for quick completions
-pub async fn quick_completion(
-    api_key: &str,
-    system_prompt: &str,
-    user_message: &str,
-    temperature: f32,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
-    let client = OpenAIClient::new(api_key);
-    
-    let messages = vec![
-        ChatMessage {
-            role: "system".to_string(),
-            content: system_prompt.to_string(),
-        },
-        ChatMessage {
-            role: "user".to_string(),
-            content: user_message.to_string(),
-        },
-    ];
-    
-    client.chat_completion(messages, temperature, None).await
-}
-

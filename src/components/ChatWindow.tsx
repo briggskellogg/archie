@@ -190,25 +190,29 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
     
     // Check if there's a conversation to archive
     if (currentConversation && messages.length > 1) {
-      // Ask user if they want to wait for archiving
-      const shouldWait = await confirm(
+      // Ask user if they want to archive before closing
+      const shouldArchive = await confirm(
         'Archive this conversation to long-term memory before closing?',
-        { title: 'Intersect', kind: 'info', okLabel: 'Archive & Close', cancelLabel: 'Close Now' }
+        { title: 'Intersect', kind: 'info', okLabel: 'Archive & Close', cancelLabel: 'Cancel' }
       );
       
-      if (shouldWait) {
-        isClosingRef.current = true;
-        setGovernorNotification("Archiving conversation to long-term memory...");
-        
-        try {
-          await finalizeConversation(currentConversation.id);
-        } catch (err) {
-          console.error('Failed to finalize on close:', err);
-        }
+      // If user clicked Cancel, return to app without closing
+      if (!shouldArchive) {
+        return;
+      }
+      
+      // User wants to archive and close
+      isClosingRef.current = true;
+      setGovernorNotification("Archiving conversation to long-term memory...");
+      
+      try {
+        await finalizeConversation(currentConversation.id);
+      } catch (err) {
+        console.error('Failed to finalize on close:', err);
       }
     }
     
-    // Now actually close
+    // Close the window
     await getCurrentWindow().destroy();
   }, [currentConversation, messages.length]);
   

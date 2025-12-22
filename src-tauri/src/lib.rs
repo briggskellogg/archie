@@ -283,7 +283,6 @@ struct TemporalContext {
     time_since_last: String,      // "just_now", "short_break", "hours_ago", "same_day", "new_day", "days_ago"
     minutes_elapsed: i64,
     time_of_day: String,          // "early_morning", "morning", "afternoon", "evening", "late_night"
-    is_new_calendar_day: bool,
     hour: u32,
 }
 
@@ -308,7 +307,6 @@ fn calculate_temporal_context(last_updated: Option<&str>) -> TemporalContext {
             time_since_last: "first_time".to_string(),
             minutes_elapsed: -1,
             time_of_day,
-            is_new_calendar_day: true,
             hour,
         };
     };
@@ -321,7 +319,6 @@ fn calculate_temporal_context(last_updated: Option<&str>) -> TemporalContext {
                 time_since_last: "unknown".to_string(),
                 minutes_elapsed: -1,
                 time_of_day,
-                is_new_calendar_day: true,
                 hour,
             };
         }
@@ -354,7 +351,6 @@ fn calculate_temporal_context(last_updated: Option<&str>) -> TemporalContext {
         time_since_last,
         minutes_elapsed,
         time_of_day,
-        is_new_calendar_day,
         hour,
     }
 }
@@ -562,24 +558,6 @@ Subtly match the vibe of their active profile:
         Some(100), // More room for nuanced greeting
         ThinkingBudget::None
     ).await
-}
-
-// Choose which agent opens based on weights + randomness
-fn choose_opener_agent(weights: (f64, f64, f64)) -> String {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    let roll: f64 = rng.random();
-    
-    let (instinct, _logic, psyche) = weights;
-    
-    // Weighted random selection
-    if roll < instinct {
-        "instinct".to_string()
-    } else if roll < instinct + psyche {
-        "psyche".to_string()
-    } else {
-        "logic".to_string()
-    }
 }
 
 /// Truncate text to max_chars for summary purposes, adding "..." if truncated

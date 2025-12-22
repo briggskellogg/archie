@@ -14,7 +14,6 @@ pub const CLAUDE_OPUS: &str = "claude-opus-4-20250514";
 #[derive(Debug, Clone, Copy)]
 pub enum ThinkingBudget {
     None,           // No thinking
-    Low,            // ~1024 tokens
     Medium,         // ~4096 tokens  
     High,           // ~10000 tokens
 }
@@ -23,7 +22,6 @@ impl ThinkingBudget {
     fn to_tokens(&self) -> Option<u32> {
         match self {
             ThinkingBudget::None => None,
-            ThinkingBudget::Low => Some(1024),
             ThinkingBudget::Medium => Some(4096),
             ThinkingBudget::High => Some(10000),
         }
@@ -91,24 +89,6 @@ impl AnthropicClient {
             client: Client::new(),
             api_key: api_key.to_string(),
         }
-    }
-    
-    /// Send a chat completion request to Claude (default: Sonnet, no thinking)
-    pub async fn chat_completion(
-        &self,
-        system_prompt: Option<&str>,
-        messages: Vec<AnthropicMessage>,
-        temperature: f32,
-        max_tokens: Option<u32>,
-    ) -> Result<String, Box<dyn Error + Send + Sync>> {
-        self.chat_completion_advanced(
-            CLAUDE_SONNET,
-            system_prompt,
-            messages,
-            temperature,
-            max_tokens,
-            ThinkingBudget::None,
-        ).await
     }
     
     /// Send a chat completion with full control over model and thinking
@@ -182,102 +162,5 @@ impl AnthropicClient {
             .last() // Get the last text block (after thinking)
             .and_then(|c| c.text.clone())
             .ok_or_else(|| "No text response from Claude".into())
-    }
-    
-    /// Validate the Anthropic API key
-    pub async fn validate_api_key(&self) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        let messages = vec![AnthropicMessage {
-            role: "user".to_string(),
-            content: "Say 'ok'".to_string(),
-        }];
-        
-        let request = MessagesRequest {
-            model: CLAUDE_SONNET.to_string(),
-            max_tokens: 10,
-            system: None,
-            messages,
-            temperature: Some(0.0),
-            thinking: None,
-        };
-        
-        let response = self.client
-            .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await?;
-        
-        if response.status().is_success() {
-            Ok(true)
-        } else {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            
-            if status.as_u16() == 401 {
-                return Err("Invalid Anthropic API key".into());
-            } else if status.as_u16() == 429 {
-                return Err("Rate limited - too many requests".into());
-            }
-            
-            // Try to parse structured error for better messaging
-            if let Ok(parsed_error) = serde_json::from_str::<AnthropicError>(&error_text) {
-                return Err(format!("{}: {}", parsed_error.error.error_type, parsed_error.error.message).into());
-            }
-            
-            Err(format!("Anthropic API error ({}): {}", status, error_text).into())
-        }
-    }
-}
-
-/// Helper to convert OpenAI-style messages to Anthropic format
-/// Extracts system message and returns (system_prompt, messages)
-pub fn convert_messages(messages: Vec<crate::openai::ChatMessage>) -> (Option<String>, Vec<AnthropicMessage>) {
-    let mut system_prompt = None;
-    let mut anthropic_messages = Vec::new();
-    
-    for msg in messages {
-        if msg.role == "system" {
-            // Accumulate system messages
-            if let Some(existing) = system_prompt {
-                system_prompt = Some(format!("{}\n\n{}", existing, msg.content));
-            } else {
-                system_prompt = Some(msg.content);
-            }
-        } else {
-            anthropic_messages.push(AnthropicMessage {
-                role: msg.role,
-                content: msg.content,
-            });
-        }
-    }
-    
-    (system_prompt, anthropic_messages)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_convert_messages() {
-        let messages = vec![
-            crate::openai::ChatMessage {
-                role: "system".to_string(),
-                content: "You are helpful.".to_string(),
-            },
-            crate::openai::ChatMessage {
-                role: "user".to_string(),
-                content: "Hello".to_string(),
-            },
-        ];
-        
-        let (system, msgs) = convert_messages(messages);
-        
-        assert_eq!(system, Some("You are helpful.".to_string()));
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].role, "user");
-        assert_eq!(msgs[0].content, "Hello");
     }
 }

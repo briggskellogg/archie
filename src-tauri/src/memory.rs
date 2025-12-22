@@ -73,39 +73,6 @@ pub struct PatternSummary {
     pub confidence: f64,
 }
 
-// ============ Context Window ============
-
-#[derive(Debug, Clone)]
-pub struct ContextWindow {
-    pub recent_messages: Vec<Message>,
-    pub conversation_summary: Option<String>,
-    pub relevant_facts: Vec<UserFact>,
-    pub relevant_patterns: Vec<UserPattern>,
-}
-
-impl ContextWindow {
-    /// Format the context window for inclusion in agent prompts
-    pub fn format_for_prompt(&self) -> String {
-        let mut parts = Vec::new();
-        
-        // Add conversation summary if available
-        if let Some(summary) = &self.conversation_summary {
-            parts.push(format!("EARLIER IN CONVERSATION:\n{}", summary));
-        }
-        
-        // Format recent messages
-        if !self.recent_messages.is_empty() {
-            let msgs: Vec<String> = self.recent_messages
-                .iter()
-                .map(|m| format!("{}: {}", m.role.to_uppercase(), m.content))
-                .collect();
-            parts.push(format!("RECENT MESSAGES:\n{}", msgs.join("\n")));
-        }
-        
-        parts.join("\n\n")
-    }
-}
-
 // ============ Memory Extractor ============
 
 pub struct MemoryExtractor {
@@ -488,36 +455,6 @@ Respond with ONLY valid JSON:
         });
         
         Ok(result)
-    }
-    
-    /// Build an efficient context window for agent prompts
-    pub fn build_context_window(
-        conversation_id: &str,
-        max_recent: usize,
-    ) -> Result<ContextWindow, Box<dyn Error + Send + Sync>> {
-        // Get recent messages (full content)
-        let recent_messages = db::get_recent_messages(conversation_id, max_recent).unwrap_or_default();
-        
-        // Get conversation summary if available
-        let summary = db::get_conversation_summary(conversation_id).ok().flatten();
-        let conversation_summary = summary.map(|s| s.summary);
-        
-        // Get high-confidence facts
-        let relevant_facts = db::get_high_confidence_facts(0.6).unwrap_or_default();
-        
-        // Get top patterns
-        let relevant_patterns = db::get_all_user_patterns()
-            .unwrap_or_default()
-            .into_iter()
-            .take(5)
-            .collect();
-        
-        Ok(ContextWindow {
-            recent_messages,
-            conversation_summary,
-            relevant_facts,
-            relevant_patterns,
-        })
     }
     
     /// Save a conversation summary to the database

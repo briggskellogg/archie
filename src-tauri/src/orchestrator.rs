@@ -169,17 +169,6 @@ impl Orchestrator {
         }
     }
     
-    /// Decide which agent(s) should respond to a user message
-    pub async fn decide_response(
-        &self,
-        user_message: &str,
-        conversation_history: &[Message],
-        weights: (f64, f64, f64),
-        active_agents: &[String],
-    ) -> Result<OrchestratorDecision, Box<dyn Error + Send + Sync>> {
-        self.decide_response_with_patterns(user_message, conversation_history, weights, active_agents, None, &[]).await
-    }
-    
     /// Decide which agent(s) should respond, with pattern awareness and disco mode support
     pub async fn decide_response_with_patterns(
         &self,
@@ -614,33 +603,6 @@ Respond with ONLY valid JSON:
         Ok(decision)
     }
     
-    /// Get a response from a specific agent with grounded context
-    pub async fn get_agent_response(
-        &self,
-        agent: Agent,
-        user_message: &str,
-        conversation_history: &[Message],
-        response_type: ResponseType,
-        primary_response: Option<&str>,
-        primary_agent: Option<&str>,
-        is_disco: bool,
-        primary_is_disco: bool,
-    ) -> Result<String, Box<dyn Error + Send + Sync>> {
-        // Use default grounding for backward compatibility
-        self.get_agent_response_with_grounding(
-            agent,
-            user_message,
-            conversation_history,
-            response_type,
-            primary_response,
-            primary_agent,
-            None,
-            None,
-            is_disco,
-            primary_is_disco,
-        ).await
-    }
-    
     /// Get a response from a specific agent with explicit grounding and self-knowledge
     pub async fn get_agent_response_with_grounding(
         &self,
@@ -722,62 +684,6 @@ Respond with ONLY valid JSON:
         // Use OpenAI client for agent responses (GPT-4o)
         // Max 300 tokens - enough for a substantive response but prevents rambling
         self.openai_client.chat_completion(messages, temperature, Some(300)).await
-    }
-    
-    /// Generate an agent's opening greeting for a new conversation
-    pub async fn generate_conversation_opener(
-        &self,
-        recent_conversations: &[db::Conversation],
-        agent: &str,
-    ) -> Result<String, Box<dyn Error + Send + Sync>> {
-        let context = if recent_conversations.is_empty() {
-            "This is the user's first conversation.".to_string()
-        } else {
-            let recent: Vec<String> = recent_conversations
-                .iter()
-                .take(3)
-                .filter_map(|c| c.title.as_ref())
-                .map(|t| format!("- {}", t))
-                .collect();
-            if recent.is_empty() {
-                "The user has had some conversations but no specific topics recorded.".to_string()
-            } else {
-                format!("Recent conversation topics:\n{}", recent.join("\n"))
-            }
-        };
-        
-        let (name, personality) = match agent {
-            "instinct" => ("Snap", "You're intuitive, direct, and trust your gut. You cut through the noise and speak from feel."),
-            "psyche" => ("Puff", "You're reflective, empathetic, and attuned to deeper meaning. You sense what's beneath the surface."),
-            _ => ("Dot", "You're methodical, precise, and grounded in reason. You approach things with clarity and structure."),
-        };
-        
-        let system_prompt = format!(r#"You are {} ({}), one of three AI agents in Intersect. Open the conversation with a brief, casual greeting.
-
-Guidelines:
-- Keep it SHORT - just 1-2 sentences max
-- Don't ask leading or specific questions
-- Simple: "Hey", "What's on your mind?", "Back again", etc.
-- If they've been chatting recently, acknowledge casually but don't interrogate
-- Never be robotic, sycophantic, or overly formal
-- You're a familiar presence, not a customer service bot
-- {}
-
-Just say hi and let them lead."#, name, agent.to_uppercase(), personality);
-
-        let messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt,
-            },
-            ChatMessage {
-                role: "user".to_string(),
-                content: context,
-            },
-        ];
-        
-        // Use OpenAI client for agent responses (GPT-4o)
-        self.openai_client.chat_completion(messages, 0.8, Some(100)).await
     }
 }
 
@@ -974,8 +880,6 @@ fn format_profile_condensed(profile: &UserProfileSummary) -> String {
 pub enum InteractionType {
     ChosenAsPrimary,
     ChosenAsSecondary,
-    UserEngaged,
-    UserIgnored,
 }
 
 /// Calculate variability based on message count
@@ -1001,8 +905,6 @@ pub fn evolve_weights(
     let base_boost = match interaction {
         InteractionType::ChosenAsPrimary => 0.02,
         InteractionType::ChosenAsSecondary => 0.015,
-        InteractionType::UserEngaged => 0.03,
-        InteractionType::UserIgnored => -0.01,
     };
     
     // Apply de-exponential variability
@@ -1142,32 +1044,6 @@ Be nuanced - most responses will have subtle engagement patterns, not extreme sc
     }
 }
 
-/// Apply engagement analysis to update weights with de-exponential rigidity
-pub fn apply_engagement_weights(
-    current_weights: (f64, f64, f64),
-    analysis: &EngagementAnalysis,
-    total_messages: i64,
-) -> (f64, f64, f64) {
-    let variability = calculate_variability(total_messages);
-    let base_boost = 0.03; // Maximum possible shift per interaction
-    
-    let (mut instinct, mut logic, mut psyche) = current_weights;
-    
-    // Apply engagement scores with variability dampening
-    logic += analysis.logic_score * base_boost * variability;
-    instinct += analysis.instinct_score * base_boost * variability;
-    psyche += analysis.psyche_score * base_boost * variability;
-    
-    // Clamp to min 10%, max 60%
-    instinct = instinct.clamp(0.1, 0.6);
-    logic = logic.clamp(0.1, 0.6);
-    psyche = psyche.clamp(0.1, 0.6);
-    
-    // Normalize to sum to 1.0
-    let total = instinct + logic + psyche;
-    (instinct / total, logic / total, psyche / total)
-}
-
 // ============ Intrinsic Trait Analysis ============
 
 /// Result of analyzing a user message for intrinsic trait signals
@@ -1276,38 +1152,6 @@ Respond in this exact JSON format:
         
         Ok(analysis)
     }
-}
-
-/// Apply intrinsic trait analysis to update weights
-pub fn apply_intrinsic_weights(
-    current_weights: (f64, f64, f64),
-    analysis: &IntrinsicTraitAnalysis,
-    total_messages: i64,
-) -> (f64, f64, f64) {
-    let variability = calculate_variability(total_messages);
-    // Intrinsic signals have lower impact than engagement (30% vs 70%)
-    let base_boost = 0.015; // Half the boost of engagement analysis
-    
-    let (mut instinct, mut logic, mut psyche) = current_weights;
-    
-    // Convert 0-1 signals to -0.33 to +0.67 range (centered on neutral 0.33)
-    let logic_delta = analysis.logic_signal - 0.33;
-    let instinct_delta = analysis.instinct_signal - 0.33;
-    let psyche_delta = analysis.psyche_signal - 0.33;
-    
-    // Apply with variability dampening
-    logic += logic_delta * base_boost * variability;
-    instinct += instinct_delta * base_boost * variability;
-    psyche += psyche_delta * base_boost * variability;
-    
-    // Clamp to min 10%, max 60%
-    instinct = instinct.clamp(0.1, 0.6);
-    logic = logic.clamp(0.1, 0.6);
-    psyche = psyche.clamp(0.1, 0.6);
-    
-    // Normalize to sum to 1.0
-    let total = instinct + logic + psyche;
-    (instinct / total, logic / total, psyche / total)
 }
 
 /// Combine both engagement and intrinsic analyses for weight update

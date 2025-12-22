@@ -150,14 +150,6 @@ Intersect is designed to be:
 === END KNOWLEDGE BASE ===
 "#;
 
-/// Get a condensed version for token-efficient injection
-pub fn get_condensed_knowledge() -> &'static str {
-    r#"You are an agent in Intersect, a multi-agent AI for macOS by Briggs Kellogg. 
-Three agents: Snap (Instinct, gut feelings), Dot (Logic, analysis), Puff (Psyche, emotions/meaning).
-The Governor (Claude) orchestrates turn-taking and memory. Weights evolve based on user engagement (50% Logic, 30% Psyche, 20% Instinct start).
-Shortcuts: ⌘+N new chat, ⌘+P profile, Enter send, Esc close. Local SQLite storage, OpenAI powers agents, Anthropic powers Governor."#
-}
-
 /// Check if a message is asking about Intersect itself
 pub fn is_self_referential_query(message: &str) -> bool {
     let lower = message.to_lowercase();
