@@ -277,96 +277,280 @@ async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
     Ok(ConversationOpenerResult { agent: "system".to_string(), content })
 }
 
+// ============ Temporal Context for Greetings ============
+
+struct TemporalContext {
+    time_since_last: String,      // "just_now", "short_break", "hours_ago", "same_day", "new_day", "days_ago"
+    minutes_elapsed: i64,
+    time_of_day: String,          // "early_morning", "morning", "afternoon", "evening", "late_night"
+    is_new_calendar_day: bool,
+    hour: u32,
+}
+
+fn calculate_temporal_context(last_updated: Option<&str>) -> TemporalContext {
+    use chrono::{DateTime, Local, Timelike};
+    
+    let now = Local::now();
+    let hour = now.hour();
+    
+    // Determine time of day
+    let time_of_day = match hour {
+        5..=8 => "early_morning",
+        9..=11 => "morning",
+        12..=16 => "afternoon",
+        17..=20 => "evening",
+        _ => "late_night", // 21-4
+    }.to_string();
+    
+    // If no previous conversation, treat as first time
+    let Some(last_str) = last_updated else {
+        return TemporalContext {
+            time_since_last: "first_time".to_string(),
+            minutes_elapsed: -1,
+            time_of_day,
+            is_new_calendar_day: true,
+            hour,
+        };
+    };
+    
+    // Parse last updated timestamp
+    let last_time = match DateTime::parse_from_rfc3339(last_str) {
+        Ok(dt) => dt.with_timezone(&Local),
+        Err(_) => {
+            return TemporalContext {
+                time_since_last: "unknown".to_string(),
+                minutes_elapsed: -1,
+                time_of_day,
+                is_new_calendar_day: true,
+                hour,
+            };
+        }
+    };
+    
+    let duration = now.signed_duration_since(last_time);
+    let minutes_elapsed = duration.num_minutes();
+    
+    // Check if it's a new calendar day
+    let is_new_calendar_day = now.date_naive() != last_time.date_naive();
+    
+    // Determine time since last category
+    let time_since_last = if minutes_elapsed < 5 {
+        "just_now"
+    } else if minutes_elapsed < 60 {
+        "short_break"
+    } else if minutes_elapsed < 240 { // < 4 hours
+        "hours_ago"
+    } else if !is_new_calendar_day {
+        "same_day"
+    } else if minutes_elapsed < 1440 { // < 24 hours but new day
+        "new_day"
+    } else if minutes_elapsed < 4320 { // < 3 days
+        "days_ago"
+    } else {
+        "extended_absence"
+    }.to_string();
+    
+    TemporalContext {
+        time_since_last,
+        minutes_elapsed,
+        time_of_day,
+        is_new_calendar_day,
+        hour,
+    }
+}
+
 /// Generate a brief Governor greeting for a new conversation using knowledge base
 async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &[db::Conversation], active_trait: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_SONNET};
     
-    // Gather user context from knowledge base
+    // ===== TEMPORAL CONTEXT =====
+    let last_updated = recent_conversations.first().map(|c| c.updated_at.as_str());
+    let temporal = calculate_temporal_context(last_updated);
+    
+    // ===== LAST CONVERSATION SUMMARY (for resolution state) =====
+    let last_summary = if let Some(last_conv) = recent_conversations.first() {
+        db::get_conversation_summary(&last_conv.id).unwrap_or(None)
+    } else {
+        None
+    };
+    
+    // ===== GATHER USER CONTEXT =====
     let user_facts = db::get_all_user_facts().unwrap_or_default();
     let user_patterns = db::get_all_user_patterns().unwrap_or_default();
     
-    // Build knowledge context
-    let mut knowledge_parts = Vec::new();
+    // Build comprehensive context
+    let mut context_parts = Vec::new();
     
-    // Active profile context - the Governor should acknowledge which mode the user is in
-    let profile_context = match active_trait {
-        "instinct" => "User is on their INSTINCT profile (Snap) - they're in gut-feeling, action-oriented mode. They might be feeling raw, impulsive, or ready to move.",
-        "logic" => "User is on their LOGIC profile (Dot) - they're in analytical, systematic mode. They might be problem-solving or seeking clarity.",
-        "psyche" => "User is on their PSYCHE profile (Puff) - they're in emotional, introspective mode. They might be processing feelings or seeking understanding.",
-        _ => "User is in a balanced mode."
+    // 1. TEMPORAL SITUATION
+    let temporal_desc = match temporal.time_since_last.as_str() {
+        "just_now" => format!("TIMING: User JUST finished a conversation (< 5 min ago). They're back immediately -- something else on their mind or continuing a thread."),
+        "short_break" => format!("TIMING: User took a short break ({} minutes). They're picking up the session.", temporal.minutes_elapsed),
+        "hours_ago" => format!("TIMING: It's been {} hours since they last chatted. Same day, fresh energy.", temporal.minutes_elapsed / 60),
+        "same_day" => format!("TIMING: They chatted earlier today but it's been a while ({}+ hours). Checking back in.", temporal.minutes_elapsed / 60),
+        "new_day" => "TIMING: This is a NEW DAY since their last conversation. Fresh start, new day greeting appropriate.".to_string(),
+        "days_ago" => format!("TIMING: It's been {} days since they last chatted. They've been away for a bit.", temporal.minutes_elapsed / 1440),
+        "extended_absence" => format!("TIMING: Extended absence -- {} days since last chat. Welcome them back warmly.", temporal.minutes_elapsed / 1440),
+        "first_time" => "TIMING: This is their FIRST conversation ever. Welcome them.".to_string(),
+        _ => "TIMING: Unknown timing context.".to_string(),
     };
-    knowledge_parts.push(profile_context.to_string());
+    context_parts.push(temporal_desc);
     
-    // Personal facts (name, preferences, etc.)
+    // 2. TIME OF DAY
+    let time_of_day_desc = match temporal.time_of_day.as_str() {
+        "early_morning" => format!("TIME OF DAY: Early morning ({}:00). They're up early.", temporal.hour),
+        "morning" => format!("TIME OF DAY: Morning ({}:00). Standard working hours.", temporal.hour),
+        "afternoon" => format!("TIME OF DAY: Afternoon ({}:00). Midday energy.", temporal.hour),
+        "evening" => format!("TIME OF DAY: Evening ({}:00). Winding down or reflective time.", temporal.hour),
+        "late_night" => format!("TIME OF DAY: Late night ({}:00). They're burning the midnight oil.", temporal.hour),
+        _ => "TIME OF DAY: Unknown.".to_string(),
+    };
+    context_parts.push(time_of_day_desc);
+    
+    // 3. LAST CONVERSATION STATE
+    if let Some(ref summary) = last_summary {
+        let mut last_conv_parts = vec![format!("LAST CONVERSATION:")];
+        last_conv_parts.push(format!("- Summary: {}", summary.summary));
+        if let Some(ref tone) = summary.emotional_tone {
+            last_conv_parts.push(format!("- Emotional tone: {}", tone));
+        }
+        if let Some(ref state) = summary.user_state {
+            last_conv_parts.push(format!("- User state: {}", state));
+        }
+        // Check for potential unresolved signals in the summary
+        let summary_lower = summary.summary.to_lowercase();
+        let unresolved_signals = ["trying to", "working on", "figuring out", "struggling with", 
+                                   "not sure", "debating", "considering", "exploring", "stuck on"];
+        let might_be_unresolved = unresolved_signals.iter().any(|s| summary_lower.contains(s));
+        if might_be_unresolved {
+            last_conv_parts.push("- SIGNAL: The last conversation may have left something unresolved or in-progress.".to_string());
+        }
+        context_parts.push(last_conv_parts.join("\n"));
+    } else if let Some(last_conv) = recent_conversations.first() {
+        // No summary but we have conversation metadata
+        if let Some(ref title) = last_conv.title {
+            context_parts.push(format!("LAST CONVERSATION: Topic was \"{}\" (no detailed summary available).", title));
+        }
+    }
+    
+    // 4. ACTIVE PROFILE
+    let profile_context = match active_trait {
+        "instinct" => "CURRENT PROFILE: INSTINCT (Snap) -- gut-feeling, action-oriented mode. Raw, impulsive energy.",
+        "logic" => "CURRENT PROFILE: LOGIC (Dot) -- analytical, systematic mode. Problem-solving, seeking clarity.",
+        "psyche" => "CURRENT PROFILE: PSYCHE (Puff) -- emotional, introspective mode. Processing feelings, seeking understanding.",
+        _ => "CURRENT PROFILE: Balanced mode."
+    };
+    context_parts.push(profile_context.to_string());
+    
+    // 5. USER KNOWLEDGE
     let personal_facts: Vec<_> = user_facts.iter()
         .filter(|f| f.category == "personal" || f.category == "preferences")
         .take(5)
         .map(|f| format!("- {}: {}", f.key, f.value))
         .collect();
     if !personal_facts.is_empty() {
-        knowledge_parts.push(format!("Known about user:\n{}", personal_facts.join("\n")));
+        context_parts.push(format!("KNOWN ABOUT USER:\n{}", personal_facts.join("\n")));
     }
     
-    // Recurring themes/patterns
+    // 6. PATTERNS
     let themes: Vec<_> = user_patterns.iter()
         .filter(|p| p.confidence > 0.5)
         .take(3)
         .map(|p| format!("- {}", p.description))
         .collect();
     if !themes.is_empty() {
-        knowledge_parts.push(format!("Patterns noticed:\n{}", themes.join("\n")));
+        context_parts.push(format!("BEHAVIORAL PATTERNS:\n{}", themes.join("\n")));
     }
     
-    // Recent conversations
-    let recent_context = if recent_conversations.is_empty() {
-        "This is their first conversation.".to_string()
-    } else {
-        let recent: Vec<String> = recent_conversations
+    // 7. RECENT TOPICS (beyond just the last one)
+    if recent_conversations.len() > 1 {
+        let other_recent: Vec<String> = recent_conversations
             .iter()
+            .skip(1)
             .take(2)
             .filter_map(|c| c.title.as_ref())
             .map(|t| format!("- {}", t))
             .collect();
-        if recent.is_empty() {
-            "They've chatted before but no specific topics recorded.".to_string()
-        } else {
-            format!("Recent topics:\n{}", recent.join("\n"))
+        if !other_recent.is_empty() {
+            context_parts.push(format!("OTHER RECENT TOPICS:\n{}", other_recent.join("\n")));
         }
-    };
-    knowledge_parts.push(recent_context);
+    }
     
-    let full_context = knowledge_parts.join("\n\n");
+    let full_context = context_parts.join("\n\n");
     
+    // ===== SOPHISTICATED SYSTEM PROMPT =====
     let system_prompt = r#"You are the Governor, the orchestration layer of Intersect. You greet users at the start of new conversations.
 
-You have access to the user's knowledge base and their CURRENT PROFILE MODE. The profile tells you their current mindset.
+Your greeting must be CONTEXTUALLY INTELLIGENT based on the situation:
 
-Rules:
-- Keep it brief: 1-2 short sentences max
-- ALWAYS subtly acknowledge their current profile/mode - not by naming it directly, but by matching the vibe:
-  - Instinct mode: Something action-oriented, raw, or gut-feeling ("Feeling restless?", "Ready to move?", "Something brewing?")
-  - Logic mode: Something analytical or problem-focused ("Got a puzzle?", "What are we solving today?", "Working through something?")
-  - Psyche mode: Something introspective or emotional ("How are you sitting with things?", "Something on your heart?", "Need to process?")
-- Be warm and familiar, not formal or robotic
-- If you know something about them (name, interests, what they're working on), weave it in naturally
-- Reference recent conversations casually if relevant
-- You're a familiar presence who knows them, not a generic assistant
-- Don't be sycophantic or overly enthusiastic
+## TIMING-BASED APPROACH (CRITICAL)
 
-Style:
-- When using dashes for pauses or asides, ALWAYS use double dashes with spaces: " -- " (not " - ")
+**Quick Return (< 5 min):** They just ended a conversation and started another. Something else is on their mind.
+- "Thought of something else?" / "What else?" / "More to unpack?"
+- DON'T ask how their day is going -- you JUST talked.
+
+**Short Break (5-60 min):** Natural session continuation.
+- "Ready for round two?" / "Back at it?" / "Picking up where we left off?"
+
+**Hours Later (same day):** They've been away doing other things.
+- "Taking another look?" / "Fresh perspective?"
+
+**New Day:** It's a new calendar day. Fresh start energy.
+- If you know their name: "Hey [name], how's today treating you?"
+- "New day -- what's on your mind?" / "Morning [or evening depending on time] -- what's brewing?"
+
+**Days Away (2-3 days):** They've been absent for a bit.
+- "Been a minute -- what's been occupying you?"
+- Reference something from before if relevant.
+
+**Extended Absence (3+ days):** Welcome them back warmly but not dramatically.
+- "Hey, good to see you. What brings you back?"
+
+## UNRESOLVED TOPICS
+
+If the last conversation signals something unresolved:
+- "Did you figure out [topic]?" / "Still working through [X]?" / "Any progress on [topic]?"
+- This is POWERFUL -- use it when the context supports it.
+
+## PROFILE MATCHING
+
+Subtly match the vibe of their active profile:
+- INSTINCT: Action-oriented, raw energy ("Something pulling at you?", "Ready to move?")
+- LOGIC: Analytical, problem-focused ("Got a puzzle?", "What are we solving?")
+- PSYCHE: Introspective, emotional ("How are you sitting with things?", "Need to process?")
+
+## TIME OF DAY
+
+- Late night (9pm-5am): "Burning the midnight oil?" / "Can't sleep?" / Night owl acknowledgment
+- Early morning (5-9am): "Early start?" / Morning energy
+- Don't force time-of-day if timing context is more relevant.
+
+## RULES
+
+- Keep it brief: 1-2 short sentences MAX
+- Be warm and familiar, never robotic or generic
+- If you know their name, USE IT occasionally (not every time)
+- Reference specific topics/projects if relevant, but don't be creepy
+- DON'T be sycophantic or overly enthusiastic
+- NEVER say "Welcome back" generically -- be specific or skip it
+
+## STYLE
+
+- When using dashes for pauses: ALWAYS use double dashes with spaces: " -- " (not " - ")
 - Example: "Still on that project -- or something new?"
 
-Examples of good greetings:
-- Instinct mode: "Something pulling at you?" / "Ready to break something down?"
-- Logic mode: "What problem are we untangling?" / "Got a thread to follow?"
-- Psyche mode: "How's it sitting with you today?" / "Something you need to feel through?""#;
+## PRIORITY ORDER
+
+1. Timing context (quick return vs new day) -- this shapes the whole tone
+2. Unresolved topics from last conversation -- powerful if applicable
+3. Profile vibe matching
+4. Personal knowledge (name, interests)
+5. Time of day color"#;
 
     let client = AnthropicClient::new(anthropic_key);
     let messages = vec![
         AnthropicMessage {
             role: "user".to_string(),
-            content: format!("Generate a greeting for this user:\n\n{}", full_context),
+            content: format!("Generate a contextually appropriate greeting based on this situation:\n\n{}", full_context),
         },
     ];
     
@@ -375,7 +559,7 @@ Examples of good greetings:
         Some(system_prompt),
         messages,
         0.8,
-        Some(75), // Slightly more room for personalized greeting
+        Some(100), // More room for nuanced greeting
         ThinkingBudget::None
     ).await
 }
@@ -1214,7 +1398,7 @@ CRITICAL LENGTH REQUIREMENT:
 
 FOCUS ON:
 - Cognitive tendencies (how they think)
-- Communication patterns (how they express themselves)  
+- Communication patterns (how they express themselves)
 - Notable themes or interests
 
 STYLE:
