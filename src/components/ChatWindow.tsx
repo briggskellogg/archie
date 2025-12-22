@@ -1070,34 +1070,36 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
 
       {/* Floating Input */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-3/4 max-w-5xl">
-        {/* Transcription overlay - shows partial transcript while speaking */}
-        <AnimatePresence>
-          {isTranscribing && partialTranscript && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="mb-2 px-4 py-2.5 bg-charcoal/80 backdrop-blur-xl border rounded-2xl shadow-2xl"
-              style={{ borderColor: 'rgba(234, 179, 8, 0.3)' }}
-            >
-              <div className="flex items-center gap-2">
-                <motion.div
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: '#EAB308' }}
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                />
-                <span className="text-sm font-mono italic" style={{ color: 'rgba(234, 179, 8, 0.8)' }}>{partialTranscript}</span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        
         <div className="flex items-center gap-3">
-          {/* Floating chat input */}
-          <div className={`flex-1 bg-charcoal/80 backdrop-blur-xl rounded-2xl border transition-all relative flex items-center shadow-2xl ${
-            isTranscribing ? 'border-emerald-500/50' : 'border-smoke/30'
-          }`}>
+          {/* Input container with transcript overlay above */}
+          <div className="flex-1 relative">
+            {/* Transcription overlay - shows partial transcript while speaking */}
+            <AnimatePresence>
+              {isTranscribing && partialTranscript && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute bottom-full mb-2 left-0 right-0 px-4 py-2.5 bg-charcoal/80 backdrop-blur-xl border rounded-2xl shadow-2xl"
+                  style={{ borderColor: 'rgba(234, 179, 8, 0.3)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <motion.div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: '#EAB308' }}
+                      animate={{ opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 1, repeat: Infinity }}
+                    />
+                    <span className="text-sm font-mono italic" style={{ color: 'rgba(234, 179, 8, 0.8)' }}>{partialTranscript}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            {/* Floating chat input */}
+            <div className={`bg-charcoal/80 backdrop-blur-xl rounded-2xl border transition-all relative flex items-center shadow-2xl ${
+              isTranscribing ? 'border-emerald-500/50' : 'border-smoke/30'
+            }`}>
             {/* User identity indicator on left with pulsing border */}
             <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
               <div className="relative">
@@ -1167,6 +1169,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             {/* Enter hint on right side */}
             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
               <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded-md text-ash/50 font-mono text-[10px] border border-smoke/40">↵ ENT</kbd>
+            </div>
             </div>
           </div>
           
