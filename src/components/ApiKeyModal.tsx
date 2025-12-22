@@ -140,6 +140,7 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
     
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && openAiStatus === 'connected' && anthropicStatus === 'connected') {
+        e.stopPropagation();
         handleDone();
       }
     };

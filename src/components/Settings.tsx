@@ -518,7 +518,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      // Don't close Settings if API modal is open - let it close first
+      if (e.key === 'Escape' && isOpen && !showApiModal) {
         onClose();
       }
       // ⌘K to open API key modal
@@ -529,7 +530,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, showApiModal]);
 
   return (
     <AnimatePresence>

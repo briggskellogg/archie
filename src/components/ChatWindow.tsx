@@ -81,7 +81,8 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   const effectiveElevenLabsKey = elevenLabsApiKey || (typeof localStorage !== 'undefined' ? localStorage.getItem('elevenlabs-api-key') : null) || '';
   
   const {
-    isTranscribing,
+    isConnected: isTranscribing, // Use isConnected since isTranscribing never becomes true
+    isConnecting,
     transcript,
     partialTranscript,
     start: startTranscription,
@@ -1077,15 +1078,17 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="mb-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl backdrop-blur-sm"
+              className="mb-2 px-4 py-2.5 bg-charcoal/80 backdrop-blur-xl border rounded-2xl shadow-2xl"
+              style={{ borderColor: 'rgba(234, 179, 8, 0.3)' }}
             >
               <div className="flex items-center gap-2">
                 <motion.div
-                  className="w-2 h-2 rounded-full bg-emerald-400"
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: '#EAB308' }}
                   animate={{ opacity: [0.5, 1, 0.5] }}
                   transition={{ duration: 1, repeat: Infinity }}
                 />
-                <span className="text-sm font-mono text-emerald-300/80 italic">{partialTranscript}</span>
+                <span className="text-sm font-mono italic" style={{ color: 'rgba(234, 179, 8, 0.8)' }}>{partialTranscript}</span>
               </div>
             </motion.div>
           )}
@@ -1172,22 +1175,22 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           <motion.button
             onClick={toggleTranscription}
             className={`flex items-center gap-1.5 px-2 py-2 rounded-lg transition-all cursor-pointer ${
-              isTranscribing 
+              isTranscribing || isConnecting
                 ? 'text-emerald-400' 
                 : 'text-ash/50 hover:text-ash'
             }`}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            title={isTranscribing ? 'Stop transcription (⌘S)' : 'Start voice transcription (⌘S)'}
+            title={isTranscribing ? 'Stop transcription (⌘S)' : isConnecting ? 'Connecting...' : 'Start voice transcription (⌘S)'}
           >
             <div className="relative">
               <Mic className="w-5 h-5" strokeWidth={1.5} />
-              {/* Pulsing dot when transcribing */}
-              {isTranscribing && (
+              {/* Pulsing dot - faster when connecting, slower when connected */}
+              {(isConnecting || isTranscribing) && (
                 <motion.div
-                  className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400"
-                  animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.1, 0.9] }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400"
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: isConnecting ? 0.4 : 1.5, repeat: Infinity, ease: 'easeInOut' }}
                 />
               )}
             </div>

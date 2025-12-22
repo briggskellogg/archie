@@ -10,6 +10,7 @@ export interface UseScribeTranscriptionOptions {
 export interface UseScribeTranscriptionReturn {
   status: ScribeStatus
   isConnected: boolean
+  isConnecting: boolean
   isTranscribing: boolean
   transcript: string
   partialTranscript: string
@@ -25,6 +26,7 @@ export function useScribeTranscription({
 }: UseScribeTranscriptionOptions): UseScribeTranscriptionReturn {
   const [segments, setSegments] = useState<string[]>([])
   const [tokenError, setTokenError] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
   // Track processed texts to prevent duplicates from multiple callbacks
   const [processedTexts] = useState(() => new Set<string>())
 
@@ -56,7 +58,7 @@ export function useScribeTranscription({
       setSegments(prev => [...prev, text])
     },
     onPartialTranscript: () => {
-      // For partial transcripts, we track via scribe.partialTranscript
+      // Partial transcripts tracked via scribe.partialTranscript
     },
     onError: (error) => {
       console.error('Scribe error:', error)
@@ -88,6 +90,7 @@ export function useScribeTranscription({
     }
 
     setTokenError(null)
+    setIsConnecting(true)
 
     try {
       console.log('Fetching token with API key...')
@@ -95,10 +98,12 @@ export function useScribeTranscription({
       console.log('Token received, connecting to scribe...')
       await scribe.connect({ token })
       console.log('Scribe connected, status:', scribe.status)
+      setIsConnecting(false)
     } catch (error) {
       console.error('Start transcription error:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to start transcription'
       setTokenError(errorMessage)
+      setIsConnecting(false)
       if (onError && error instanceof Error) {
         onError(error)
       }
@@ -133,6 +138,7 @@ export function useScribeTranscription({
   return {
     status: scribe.status,
     isConnected: scribe.isConnected,
+    isConnecting,
     isTranscribing: scribe.isTranscribing,
     transcript,
     partialTranscript: scribe.partialTranscript,
