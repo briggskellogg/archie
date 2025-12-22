@@ -358,15 +358,15 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             break;
           case '1':
             e.preventDefault();
-            cycleAgentMode('instinct'); // Toggle Snap
+            cycleAgentMode('psyche'); // Toggle Puff (first in UI order)
             break;
           case '2':
             e.preventDefault();
-            cycleAgentMode('logic'); // Toggle Dot
+            cycleAgentMode('logic'); // Toggle Dot (second in UI order)
             break;
           case '3':
             e.preventDefault();
-            cycleAgentMode('psyche'); // Toggle Puff
+            cycleAgentMode('instinct'); // Toggle Snap (third in UI order)
             break;
         }
         
@@ -884,7 +884,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
                       />
                     )}
                   </motion.button>
-                  <kbd className="text-[8px] font-mono text-ash/40">{hotkeyNum}</kbd>
+                  <kbd className="text-[8px] font-mono text-ash/40">⌘{hotkeyNum}</kbd>
                   
                   {/* Hover tooltip */}
                   <div 
@@ -953,7 +953,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
                     className={`w-4 h-4 ${discoState === 'partial' ? 'opacity-70' : ''}`} 
                     strokeWidth={1.5}
                   />
-                  <kbd className="text-[8px] font-mono text-ash/40">D</kbd>
+                  <kbd className="text-[8px] font-mono text-ash/40">⌘D</kbd>
                 </motion.button>
                 
                 {/* Disco Mode tooltip */}
