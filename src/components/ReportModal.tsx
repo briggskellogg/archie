@@ -47,6 +47,25 @@ export function ReportModal({ isOpen, onClose, onOpenApiModal }: ReportModalProp
     }
   }, [isOpen]);
 
+  // Keyboard shortcuts for tabs (⌘1-4)
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey) {
+        const tabs: TabType[] = ['overview', 'profiles', 'patterns', 'vibe'];
+        const keyNum = parseInt(e.key);
+        if (keyNum >= 1 && keyNum <= 4) {
+          e.preventDefault();
+          setActiveTab(tabs[keyNum - 1]);
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   const checkAndRefreshReport = async () => {
     try {
       // First, fetch current stats to check if we need to regenerate
@@ -282,21 +301,26 @@ export function ReportModal({ isOpen, onClose, onOpenApiModal }: ReportModalProp
               <div className="px-5 py-2 border-b border-smoke/20 flex-shrink-0 bg-obsidian/98 sticky top-0 z-10">
                 <div className="flex items-center gap-1">
                   {[
-                    { id: 'overview' as TabType, label: 'Overview' },
-                    { id: 'profiles' as TabType, label: 'Profiles' },
-                    { id: 'patterns' as TabType, label: 'Patterns & Themes' },
-                    { id: 'vibe' as TabType, label: 'Vibe Check' },
+                    { id: 'overview' as TabType, label: 'Overview', hotkey: '1' },
+                    { id: 'profiles' as TabType, label: 'Profiles', hotkey: '2' },
+                    { id: 'patterns' as TabType, label: 'Patterns & Themes', hotkey: '3' },
+                    { id: 'vibe' as TabType, label: 'Vibe Check', hotkey: '4' },
                   ].map((tab) => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-mono transition-all cursor-pointer ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-mono transition-all cursor-pointer ${
                         activeTab === tab.id
                           ? 'bg-smoke/40 text-pearl'
                           : 'text-ash/60 hover:text-ash hover:bg-smoke/20'
                       }`}
                     >
                       {tab.label}
+                      <kbd className={`px-1 py-0.5 rounded text-[9px] font-mono leading-none border ${
+                        activeTab === tab.id
+                          ? 'bg-smoke/30 text-ash/80 border-smoke/50'
+                          : 'bg-smoke/20 text-ash/40 border-smoke/30'
+                      }`}>⌘{tab.hotkey}</kbd>
                     </button>
                   ))}
                 </div>

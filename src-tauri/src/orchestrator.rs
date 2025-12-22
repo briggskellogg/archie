@@ -863,7 +863,7 @@ Your voice is: Thoughtful, probing, empathetic. You look beneath the surface. Yo
         ""
     };
     
-    format!("{}\n\n{}\n\nIMPORTANT: Never prefix your response with your name, labels, or tags like [INSTINCT]: or similar. Just respond directly. Keep responses SHORT - typically 1-3 sentences, occasionally a short paragraph if truly needed. Don't ramble. Don't use emojis. Don't be sycophantic. Be genuine.{}", base_prompt, response_context, disco_suffix)
+    format!("{}\n\n{}\n\nIMPORTANT: Never prefix your response with your name, labels, or tags like [INSTINCT]: or similar. Just respond directly. Keep responses SHORT - typically 1-3 sentences, occasionally a short paragraph if truly needed. Don't ramble. Don't use emojis. Don't be sycophantic. Be genuine. When using dashes for pauses or asides, ALWAYS use double dashes with spaces: \" -- \" (not \" - \").{}", base_prompt, response_context, disco_suffix)
 }
 
 /// Get the system prompt for an agent with grounding context and optional self-knowledge

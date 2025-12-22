@@ -353,6 +353,10 @@ Rules:
 - You're a familiar presence who knows them, not a generic assistant
 - Don't be sycophantic or overly enthusiastic
 
+Style:
+- When using dashes for pauses or asides, ALWAYS use double dashes with spaces: " -- " (not " - ")
+- Example: "Still on that project -- or something new?"
+
 Examples of good greetings:
 - Instinct mode: "Something pulling at you?" / "Ready to break something down?"
 - Logic mode: "What problem are we untangling?" / "Got a thread to follow?"
@@ -1211,7 +1215,11 @@ CRITICAL LENGTH REQUIREMENT:
 FOCUS ON:
 - Cognitive tendencies (how they think)
 - Communication patterns (how they express themselves)  
-- Notable themes or interests"#;
+- Notable themes or interests
+
+STYLE:
+- When using dashes for pauses or asides, ALWAYS use double dashes with spaces: " -- " (not " - ")
+- Example: "They think in systems -- always mapping things out.""#;
 
     let user_prompt = format!(
         "SCOPE: {}\n\nPROFILES:\n{}\n\nTOTAL MESSAGES: {}\n\nLEARNED FACTS:\n{}\n\nBEHAVIORAL PATTERNS:\n{}\n\nRECURRING THEMES:\n{}\n\nGenerate the Governor's report:",
@@ -1273,7 +1281,11 @@ Rules:
 - Be direct, almost casual — like you're telling a friend what you've noticed
 - Reference actual patterns and themes, but make it feel natural, not clinical
 - This should feel like insight with personality, not a report
-- Don't use bullet points or formatting, just 3 flowing sentences"#;
+- Don't use bullet points or formatting, just 3 flowing sentences
+
+Style:
+- When using dashes for pauses or asides, ALWAYS use double dashes with spaces: " -- " (not " - ")
+- Example: "They're curious about everything -- sometimes too curious for their own good.""#;
 
     let client = AnthropicClient::new(&anthropic_key);
     let messages = vec![
