@@ -676,16 +676,10 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
                   <motion.button
                     onClick={() => cycleAgentMode(agentId)}
                     className={`relative w-6 h-6 rounded-full overflow-hidden transition-all ${
-                      isDisco
-                        ? 'ring-[1.5px] ring-offset-1 ring-offset-obsidian opacity-100'
-                        : isActive 
-                          ? 'ring-[1px] ring-offset-1 ring-offset-obsidian opacity-100' 
-                          : 'opacity-40 grayscale hover:opacity-60'
+                      isActive 
+                        ? 'opacity-100' 
+                        : 'opacity-40 grayscale hover:opacity-60'
                     } cursor-pointer`}
-                    style={{ 
-                      // @ts-expect-error Tailwind CSS variable for ring color
-                      '--tw-ring-color': isDisco ? '#EAB308' : isActive ? agent.color : 'transparent',
-                    }}
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.92 }}
                   >
@@ -694,6 +688,15 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
                       alt={agent.name}
                       className="w-full h-full object-cover"
                     />
+                    {/* Active indicator dot - bottom right, overlapping */}
+                    {isActive && (
+                      <motion.div
+                        className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-obsidian z-10"
+                        style={{ backgroundColor: isDisco ? '#EAB308' : '#22C55E' }}
+                        animate={{ opacity: [0.7, 1, 0.7] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                      />
+                    )}
                   </motion.button>
                   
                   {/* Hover tooltip */}

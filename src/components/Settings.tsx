@@ -204,30 +204,13 @@ function RadarChart({ weights, targetWeights }: { weights: { instinct: number; l
             }}
           >
             <div className="relative">
-              {/* Subtle pulsing gold ring for dominant trait - never fully fades */}
-              {isDominant && (
-                <motion.div
-                  className="absolute inset-0 rounded-full z-10"
-                  style={{ 
-                    boxShadow: '0 0 0 3px #EAB308',
-                  }}
-                  animate={{ 
-                    opacity: [0.65, 0.9, 0.65],
-                  }}
-                  transition={{ 
-                    duration: 3,
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                  }}
-                />
-              )}
               <div
-                className="rounded-full overflow-hidden border-2 transition-all duration-300 relative z-0"
+                className="rounded-full overflow-hidden border-2 transition-all duration-300 relative"
                 style={{
                   width: imgSize,
                   height: imgSize,
-                  borderColor: isDominant ? 'transparent' : AGENTS[id].color,
-                  boxShadow: isDominant ? 'none' : `0 0 ${8 + weight * 8}px ${AGENTS[id].color}${Math.round(40 + weight * 30).toString(16)}`,
+                  borderColor: AGENTS[id].color,
+                  boxShadow: `0 0 ${8 + weight * 8}px ${AGENTS[id].color}${Math.round(40 + weight * 30).toString(16)}`,
                 }}
               >
                 <img
@@ -236,6 +219,15 @@ function RadarChart({ weights, targetWeights }: { weights: { instinct: number; l
                   className="w-full h-full object-cover"
                 />
               </div>
+              {/* Pulsing green dot for dominant trait - bottom right, overlapping */}
+              {isDominant && (
+                <motion.div
+                  className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-obsidian z-10"
+                  style={{ backgroundColor: '#22C55E' }}
+                  animate={{ opacity: [0.7, 1, 0.7] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              )}
             </div>
             <div className="flex items-center gap-1.5 mt-2">
               <span 
