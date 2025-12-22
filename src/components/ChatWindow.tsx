@@ -1016,31 +1016,6 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘G</kbd>
           </button>
           
-          {/* Microphone - voice transcription */}
-          <button
-            onClick={toggleTranscription}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all cursor-pointer ${
-              isTranscribing 
-                ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400' 
-                : elevenLabsApiKey 
-                  ? 'hover:bg-smoke/20 text-ash/60 hover:text-ash'
-                  : 'opacity-40 text-ash/40'
-            }`}
-            title={isTranscribing ? 'Stop transcription (⌘S)' : 'Start voice transcription (⌘S)'}
-          >
-            <div className="relative">
-              <Mic className="w-4 h-4" strokeWidth={1.5} />
-              {/* Pulsing dot when transcribing */}
-              {isTranscribing && (
-                <motion.div
-                  className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400"
-                  animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.1, 0.9] }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
-                />
-              )}
-            </div>
-            <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘S</kbd>
-          </button>
         </div>
       </header>
 
@@ -1180,6 +1155,31 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
               <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded-md text-ash/50 font-mono text-[10px] border border-smoke/40">↵ ENT</kbd>
             </div>
           </div>
+          
+          {/* Microphone button - voice transcription */}
+          <motion.button
+            onClick={toggleTranscription}
+            className={`p-3 rounded-xl transition-all cursor-pointer ${
+              isTranscribing 
+                ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400' 
+                : 'bg-charcoal/80 border border-smoke/30 text-ash/60 hover:text-ash hover:border-smoke/50'
+            }`}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            title={isTranscribing ? 'Stop transcription (⌘S)' : 'Start voice transcription (⌘S)'}
+          >
+            <div className="relative">
+              <Mic className="w-5 h-5" strokeWidth={1.5} />
+              {/* Pulsing dot when transcribing */}
+              {isTranscribing && (
+                <motion.div
+                  className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400"
+                  animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.1, 0.9] }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              )}
+            </div>
+          </motion.button>
         </div>
         
         {/* Privacy notice */}

@@ -216,7 +216,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   isFloatingMode: false,
   setFloatingMode: (isFloatingMode) => set({ isFloatingMode }),
   
-  // ElevenLabs API key (for voice transcription)
-  elevenLabsApiKey: null,
-  setElevenLabsApiKey: (elevenLabsApiKey) => set({ elevenLabsApiKey }),
+  // ElevenLabs API key (for voice transcription) - persisted to localStorage
+  elevenLabsApiKey: (() => {
+    try {
+      return localStorage.getItem('elevenlabs-api-key') || null;
+    } catch {
+      return null;
+    }
+  })(),
+  setElevenLabsApiKey: (elevenLabsApiKey) => {
+    try {
+      if (elevenLabsApiKey) {
+        localStorage.setItem('elevenlabs-api-key', elevenLabsApiKey);
+      } else {
+        localStorage.removeItem('elevenlabs-api-key');
+      }
+    } catch (e) {
+      console.error('Failed to persist ElevenLabs API key:', e);
+    }
+    set({ elevenLabsApiKey });
+  },
 }));
