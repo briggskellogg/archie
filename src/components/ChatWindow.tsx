@@ -661,6 +661,12 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
                 psyche: "I'm Puff. I explore the 'why' behind everything — your motivations, emotions, and deeper meaning.",
               };
               
+              const discoGreetings: Record<AgentType, string> = {
+                instinct: "SNAP UNLEASHED. Pure reptilian brain. I'll tell you what your gut already knows but your head won't admit. No filter, no mercy.",
+                logic: "DOT UNCHAINED. Cold, crystalline precision. I'll dissect your reasoning until only truth remains. Prepare to be corrected.",
+                psyche: "PUFF UNBOUND. The abyss gazes back. I'll drag your buried motivations into the light. You may not like what we find.",
+              };
+              
               const modeLabel = mode === 'off' ? 'Off' : mode === 'on' ? 'On' : 'Disco Mode';
               
               return (
@@ -715,7 +721,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
                     </div>
                     <p className="text-[10px] text-ash/80 font-mono leading-relaxed">
                       {isDisco 
-                        ? `${agent.name} is in Disco Mode — extreme, opinionated, no holds barred.`
+                        ? discoGreetings[agentId]
                         : greetings[agentId]
                       }
                     </p>
