@@ -67,18 +67,21 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
   const shouldCancelDebate = useRef(false); // For user interruption during multi-turn debates
   const pendingMessage = useRef<string | null>(null); // Queue user's interrupting message
 
-  // Initialize conversation when API key is available
+  // Reset initialization when profile changes
+  const prevProfileId = useRef<string | null>(null);
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:useEffect-check',message:'ChatWindow useEffect triggered',data:{hasApiKey:!!userProfile?.apiKey,hasConversation:!!currentConversation,hasInitialized:hasInitialized.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-    
+    if (activePersonaProfile?.id && prevProfileId.current && prevProfileId.current !== activePersonaProfile.id) {
+      // Profile changed - allow re-initialization
+      hasInitialized.current = false;
+    }
+    prevProfileId.current = activePersonaProfile?.id || null;
+  }, [activePersonaProfile?.id]);
+
+  // Initialize conversation when API key is available or profile changes
+  useEffect(() => {
     async function initConversation() {
       // Prevent double initialization in React StrictMode
       if (hasInitialized.current) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:double-init-blocked',message:'Double init blocked by ref',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         return;
       }
       hasInitialized.current = true;
@@ -134,7 +137,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
     if (userProfile?.apiKey && !currentConversation) {
       initConversation();
     }
-  }, [userProfile?.apiKey]);
+  }, [userProfile?.apiKey, currentConversation]);
 
   // Scroll to bottom when messages change or loading state changes
   useEffect(() => {
@@ -489,6 +492,11 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
 
   // Handle new conversation
   const handleNewConversation = async () => {
+    // Show notification that previous conversation is being saved
+    if (currentConversation && messages.length > 1) {
+      setGovernorNotification("Sorting this conversation into long-term memory...");
+    }
+    
     clearMessages();
     setCurrentConversation(null);
     setDebateMode(null);
@@ -498,32 +506,23 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
       const conv = await createConversation();
       setCurrentConversation(conv);
       
-      // Governor is choosing who should greet
+      // Governor is greeting the user
       setIsLoading(true);
-      setThinkingPhase('routing');
+      setThinkingPhase('thinking');
       setThinkingAgent('system'); // Governor thinking
       
-      // Governor thinks for 3 seconds while choosing agent
-      await new Promise(r => setTimeout(r, 3000));
-      
-      // Get opener (backend chooses agent based on weights)
+      // Get Governor greeting
       const openerResult = await getConversationOpener();
       
-      // Now show the chosen agent thinking
-      setThinkingAgent(openerResult.agent as AgentType);
-      setThinkingPhase('thinking');
-      
-      // Agent thinks briefly before responding
-      await new Promise(r => setTimeout(r, 1500));
-      
-      addMessage({
+      const governorMessage: Message = {
         id: uuidv4(),
         conversationId: conv.id,
-        role: openerResult.agent as AgentType,
+        role: 'system', // Governor greeting
         content: openerResult.content,
         responseType: 'primary',
         timestamp: new Date(),
-      });
+      };
+      addMessage(governorMessage);
       setIsLoading(false);
       setThinkingAgent(null);
     } catch (err) {

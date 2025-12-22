@@ -202,6 +202,47 @@ impl Orchestrator {
         
         let (instinct_w, logic_w, psyche_w) = weights;
         
+        // ===== FORCED INCLUSION: Check if any agent has been excluded for 3+ exchanges =====
+        // Count how many user exchanges each agent hasn't participated in
+        let mut agent_silence_count: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for agent in active_agents {
+            agent_silence_count.insert(agent.clone(), 0);
+        }
+        
+        // Look at the last 6 exchanges (user + agent pairs) to count silence
+        let mut user_exchanges = 0;
+        for msg in conversation_history.iter().rev() {
+            if msg.role == "user" {
+                user_exchanges += 1;
+                if user_exchanges > 6 { break; }
+            } else if active_agents.contains(&msg.role) {
+                // This agent spoke, reset their silence
+                agent_silence_count.insert(msg.role.clone(), 0);
+            }
+            // Increment silence for agents that didn't speak since last user message
+            if msg.role == "user" {
+                for agent in active_agents {
+                    if let Some(count) = agent_silence_count.get_mut(agent) {
+                        *count += 1;
+                    }
+                }
+            }
+        }
+        
+        // Find agent that's been silent for 3+ exchanges
+        let forced_agent: Option<String> = agent_silence_count.iter()
+            .filter(|(agent, count)| **count >= 3 && active_agents.contains(agent))
+            .max_by_key(|(_, count)| *count)
+            .map(|(agent, _)| agent.clone());
+        
+        let forced_inclusion_context = if let Some(ref agent) = forced_agent {
+            format!("\n\nFORCED INCLUSION: {} has NOT participated in the last 3+ exchanges. \
+                     You MUST include {} as either primary or secondary in this response to ensure balanced participation.", 
+                     agent, agent)
+        } else {
+            String::new()
+        };
+        
         // Build context from recent messages
         let history_context: String = conversation_history
             .iter()
@@ -278,7 +319,7 @@ DECISION CRITERIA:
    - "addition": Adds a caveat or different angle (mild, collaborative)
    - "rebuttal": Challenges or disagrees (moderate tension)
    - "debate": Strong disagreement, may trigger back-and-forth (rare, only for big disagreements)
-{patterns_context}
+{patterns_context}{forced_inclusion_context}
 
 CONVERSATION HISTORY:
 {history_context}
@@ -330,10 +371,23 @@ Respond with ONLY valid JSON:
             }
         });
         
+        // If we have a forced agent that wasn't included, override
+        let (final_primary, final_secondary) = if let Some(ref forced) = forced_agent {
+            if primary != *forced && secondary.as_ref() != Some(forced) {
+                // Forced agent wasn't included, add them as secondary
+                println!("[TURN-TAKING] Forcing {} to participate (3+ exchanges silent)", forced);
+                (primary, Some(forced.clone()))
+            } else {
+                (primary, secondary)
+            }
+        } else {
+            (primary, secondary)
+        };
+        
         Ok(OrchestratorDecision {
-            primary_agent: primary,
-            add_secondary: secondary.is_some(),
-            secondary_agent: secondary,
+            primary_agent: final_primary,
+            add_secondary: final_secondary.is_some(),
+            secondary_agent: final_secondary,
             secondary_type: decision.secondary_type,
         })
     }

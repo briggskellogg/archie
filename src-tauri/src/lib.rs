@@ -188,12 +188,40 @@ async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
     Ok(ConversationOpenerResult { agent: "system".to_string(), content })
 }
 
-/// Generate a brief Governor greeting for a new conversation
+/// Generate a brief Governor greeting for a new conversation using knowledge base
 async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &[db::Conversation]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_SONNET};
     
-    let context = if recent_conversations.is_empty() {
-        "This is the user's first conversation.".to_string()
+    // Gather user context from knowledge base
+    let user_facts = db::get_all_user_facts().unwrap_or_default();
+    let user_patterns = db::get_all_user_patterns().unwrap_or_default();
+    
+    // Build knowledge context
+    let mut knowledge_parts = Vec::new();
+    
+    // Personal facts (name, preferences, etc.)
+    let personal_facts: Vec<_> = user_facts.iter()
+        .filter(|f| f.category == "personal" || f.category == "preferences")
+        .take(5)
+        .map(|f| format!("- {}: {}", f.key, f.value))
+        .collect();
+    if !personal_facts.is_empty() {
+        knowledge_parts.push(format!("Known about user:\n{}", personal_facts.join("\n")));
+    }
+    
+    // Recurring themes/patterns
+    let themes: Vec<_> = user_patterns.iter()
+        .filter(|p| p.confidence > 0.5)
+        .take(3)
+        .map(|p| format!("- {}", p.description))
+        .collect();
+    if !themes.is_empty() {
+        knowledge_parts.push(format!("Patterns noticed:\n{}", themes.join("\n")));
+    }
+    
+    // Recent conversations
+    let recent_context = if recent_conversations.is_empty() {
+        "This is their first conversation.".to_string()
     } else {
         let recent: Vec<String> = recent_conversations
             .iter()
@@ -202,27 +230,41 @@ async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &
             .map(|t| format!("- {}", t))
             .collect();
         if recent.is_empty() {
-            "The user has chatted before but no specific topics.".to_string()
+            "They've chatted before but no specific topics recorded.".to_string()
         } else {
             format!("Recent topics:\n{}", recent.join("\n"))
         }
     };
+    knowledge_parts.push(recent_context);
+    
+    let full_context = knowledge_parts.join("\n\n");
     
     let system_prompt = r#"You are the Governor, the orchestration layer of Intersect. You greet users at the start of new conversations.
 
+You have access to the user's knowledge base - things you've learned about them over time. Use this to craft a personalized, contextual greeting.
+
 Rules:
-- Keep it VERY brief: 1 short sentence max
-- Don't be formal or robotic
-- If they've chatted before, maybe casually mention it ("Back for more?" or "Picking up where we left off?")
-- If new, just a simple "What's on your mind?" or similar
-- Never list out what they talked about - just acknowledge briefly if at all
-- You're not an assistant - you're a familiar presence"#;
+- Keep it brief: 1-2 short sentences max
+- Be warm and familiar, not formal or robotic
+- If you know something about them (name, interests, what they're working on), weave it in naturally
+- Reference recent conversations casually if relevant ("Still thinking about X?" or "How'd that go?")
+- If new user with no data, just a simple warm greeting
+- You're a familiar presence who knows them, not a generic assistant
+- Don't be sycophantic or overly enthusiastic
+- Feel free to be curious about what brings them back
+
+Examples of good greetings:
+- "Hey [name], what's on your mind?"
+- "Back again - still wrestling with that project?"
+- "How'd things go with [recent topic]?"
+- "What brings you by?"
+- "Something new, or picking up where we left off?""#;
 
     let client = AnthropicClient::new(anthropic_key);
     let messages = vec![
         AnthropicMessage {
             role: "user".to_string(),
-            content: context,
+            content: format!("Generate a greeting for this user:\n\n{}", full_context),
         },
     ];
     
@@ -231,7 +273,7 @@ Rules:
         Some(system_prompt),
         messages,
         0.8,
-        Some(50), // Very brief
+        Some(75), // Slightly more room for personalized greeting
         ThinkingBudget::None
     ).await
 }
