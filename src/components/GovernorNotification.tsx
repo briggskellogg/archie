@@ -11,12 +11,10 @@ interface GovernorNotificationProps {
 
 export function GovernorNotification({ message, isVisible, onDismiss }: GovernorNotificationProps) {
   const [phase, setPhase] = useState<'thinking' | 'showing'>('thinking');
-  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     if (!isVisible) {
       setPhase('thinking');
-      setIsExpanded(false);
       return;
     }
 
@@ -29,15 +27,15 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
   }, [isVisible]);
 
   useEffect(() => {
-    if (phase !== 'showing' || isExpanded) return;
+    if (phase !== 'showing') return;
 
-    // Auto-dismiss after 4 seconds if not expanded
+    // Auto-dismiss after 4 seconds
     const dismissTimer = setTimeout(() => {
       onDismiss();
     }, 4000);
 
     return () => clearTimeout(dismissTimer);
-  }, [phase, isExpanded, onDismiss]);
+  }, [phase, onDismiss]);
 
   return (
     <AnimatePresence>
@@ -50,8 +48,7 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
           className="fixed top-16 right-4 z-50 max-w-xs"
         >
           <div 
-            className="bg-obsidian/95 backdrop-blur-xl border border-smoke/50 rounded-xl shadow-2xl overflow-hidden cursor-pointer"
-            onClick={() => setIsExpanded(!isExpanded)}
+            className="bg-obsidian/95 backdrop-blur-xl border border-smoke/50 rounded-xl shadow-2xl overflow-hidden"
           >
             {/* Header with Governor avatar */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-smoke/30">
@@ -102,21 +99,14 @@ export function GovernorNotification({ message, isVisible, onDismiss }: Governor
               {phase === 'thinking' ? (
                 <p className="text-[11px] text-ash/60 font-mono">Analyzing patterns...</p>
               ) : (
-                <>
-                  <p className="text-[11px] text-pearl/90 font-mono leading-relaxed">
-                    {isExpanded ? message : message.split('.')[0] + '.'}
-                  </p>
-                  {message.includes('.') && message.split('.').length > 2 && !isExpanded && (
-                    <p className="text-[10px] text-ash/50 font-mono mt-1">
-                      Click to expand
-                    </p>
-                  )}
-                </>
+                <p className="text-[11px] text-pearl/90 font-mono leading-relaxed">
+                  {message}
+                </p>
               )}
             </div>
 
             {/* Progress bar for auto-dismiss */}
-            {phase === 'showing' && !isExpanded && (
+            {phase === 'showing' && (
               <motion.div
                 initial={{ scaleX: 1 }}
                 animate={{ scaleX: 0 }}

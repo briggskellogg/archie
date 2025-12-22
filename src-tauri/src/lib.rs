@@ -265,8 +265,12 @@ async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
     
     let recent = db::get_recent_conversations(5).map_err(|e| e.to_string())?;
     
+    // Get active persona profile to inform the greeting
+    let active_profile = db::get_active_persona_profile().map_err(|e| e.to_string())?;
+    let active_trait = active_profile.map(|p| p.dominant_trait).unwrap_or_else(|| "logic".to_string());
+    
     // Governor greets the user (using Anthropic/Claude)
-    let content = generate_governor_greeting(&anthropic_key, &recent)
+    let content = generate_governor_greeting(&anthropic_key, &recent, &active_trait)
         .await
         .map_err(|e| e.to_string())?;
     
@@ -274,7 +278,7 @@ async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
 }
 
 /// Generate a brief Governor greeting for a new conversation using knowledge base
-async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &[db::Conversation]) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &[db::Conversation], active_trait: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     use crate::anthropic::{AnthropicClient, AnthropicMessage, ThinkingBudget, CLAUDE_SONNET};
     
     // Gather user context from knowledge base
@@ -283,6 +287,15 @@ async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &
     
     // Build knowledge context
     let mut knowledge_parts = Vec::new();
+    
+    // Active profile context - the Governor should acknowledge which mode the user is in
+    let profile_context = match active_trait {
+        "instinct" => "User is on their INSTINCT profile (Snap) - they're in gut-feeling, action-oriented mode. They might be feeling raw, impulsive, or ready to move.",
+        "logic" => "User is on their LOGIC profile (Dot) - they're in analytical, systematic mode. They might be problem-solving or seeking clarity.",
+        "psyche" => "User is on their PSYCHE profile (Puff) - they're in emotional, introspective mode. They might be processing feelings or seeking understanding.",
+        _ => "User is in a balanced mode."
+    };
+    knowledge_parts.push(profile_context.to_string());
     
     // Personal facts (name, preferences, etc.)
     let personal_facts: Vec<_> = user_facts.iter()
@@ -326,24 +339,24 @@ async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &
     
     let system_prompt = r#"You are the Governor, the orchestration layer of Intersect. You greet users at the start of new conversations.
 
-You have access to the user's knowledge base - things you've learned about them over time. Use this to craft a personalized, contextual greeting.
+You have access to the user's knowledge base and their CURRENT PROFILE MODE. The profile tells you their current mindset.
 
 Rules:
 - Keep it brief: 1-2 short sentences max
+- ALWAYS subtly acknowledge their current profile/mode - not by naming it directly, but by matching the vibe:
+  - Instinct mode: Something action-oriented, raw, or gut-feeling ("Feeling restless?", "Ready to move?", "Something brewing?")
+  - Logic mode: Something analytical or problem-focused ("Got a puzzle?", "What are we solving today?", "Working through something?")
+  - Psyche mode: Something introspective or emotional ("How are you sitting with things?", "Something on your heart?", "Need to process?")
 - Be warm and familiar, not formal or robotic
 - If you know something about them (name, interests, what they're working on), weave it in naturally
-- Reference recent conversations casually if relevant ("Still thinking about X?" or "How'd that go?")
-- If new user with no data, just a simple warm greeting
+- Reference recent conversations casually if relevant
 - You're a familiar presence who knows them, not a generic assistant
 - Don't be sycophantic or overly enthusiastic
-- Feel free to be curious about what brings them back
 
 Examples of good greetings:
-- "Hey [name], what's on your mind?"
-- "Back again - still wrestling with that project?"
-- "How'd things go with [recent topic]?"
-- "What brings you by?"
-- "Something new, or picking up where we left off?""#;
+- Instinct mode: "Something pulling at you?" / "Ready to break something down?"
+- Logic mode: "What problem are we untangling?" / "Got a thread to follow?"
+- Psyche mode: "How's it sitting with you today?" / "Something you need to feel through?""#;
 
     let client = AnthropicClient::new(anthropic_key);
     let messages = vec![

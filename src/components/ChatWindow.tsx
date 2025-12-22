@@ -506,6 +506,9 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
 
   // Handle new conversation
   const handleNewConversation = async () => {
+    // Prevent useEffect from also trying to init (race condition fix)
+    hasInitialized.current = true;
+    
     // Finalize the previous conversation before starting a new one
     if (currentConversation && messages.length > 1) {
       setGovernorNotification("Sorting this conversation into long-term memory...");
@@ -518,7 +521,6 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
     clearMessages();
     setCurrentConversation(null);
     setDebateMode(null);
-    hasInitialized.current = false;
     
     try {
       const conv = await createConversation();
