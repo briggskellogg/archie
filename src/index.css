@@ -164,6 +164,16 @@ h1, h2, h3, h4, h5, h6, .font-header {
   background: var(--color-ash);
 }
 
+/* Thin scrollbar for textareas */
+textarea::-webkit-scrollbar {
+  width: 4px;
+}
+
+textarea::-webkit-scrollbar-thumb {
+  background: var(--color-smoke);
+  border-radius: 2px;
+}
+
 /* Tauri window drag region */
 .drag-region {
   -webkit-app-region: drag;

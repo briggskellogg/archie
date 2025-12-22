@@ -1139,18 +1139,18 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
               value={inputValue}
               onChange={(e) => {
                 setInputValue(e.target.value);
-                // Auto-expand height based on content (up to 3 lines, then scroll)
+                // Auto-expand height based on content (up to 5 lines, then scroll)
                 e.target.style.height = 'auto';
-                const lineHeight = 20; // approx line height for text-sm
-                const maxHeight = lineHeight * 3 + 24; // 3 lines + padding
+                const lineHeight = 22; // line height for text-sm with spacing
+                const maxHeight = lineHeight * 5 + 24; // 5 lines + padding
                 e.target.style.height = Math.min(e.target.scrollHeight, maxHeight) + 'px';
               }}
               onKeyDown={handleKeyDown}
               placeholder=""
               disabled={false}
               rows={1}
-              className="w-full bg-transparent text-pearl font-mono text-sm pl-14 pr-20 py-3 resize-none outline-none border-none overflow-y-auto"
-              style={{ boxShadow: 'none', minHeight: '48px', maxHeight: '84px' }}
+              className="w-full bg-transparent text-pearl font-mono text-sm pl-14 pr-4 py-3 resize-none outline-none border-none overflow-y-auto scrollbar-thin scrollbar-thumb-smoke/50 scrollbar-track-transparent"
+              style={{ boxShadow: 'none', minHeight: '48px', maxHeight: '134px' }}
             />
             {/* Placeholder with styled slash */}
             {!inputValue && !isTranscribing && (
@@ -1178,8 +1178,8 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
                 </span>
               </div>
             )}
-            {/* Enter hint on right side */}
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+            {/* Enter hint - bottom right corner */}
+            <div className="absolute right-3 bottom-2.5 pointer-events-none">
               <kbd className="px-1.5 py-0.5 bg-smoke/30 rounded-md text-ash/50 font-mono text-[10px] border border-smoke/40">↵ ENT</kbd>
             </div>
             </div>
