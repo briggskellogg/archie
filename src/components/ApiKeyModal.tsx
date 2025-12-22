@@ -134,12 +134,13 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
     }
   };
 
-  // ESC to close if OpenAI connected
+  // ⌘+ESC to close if OpenAI connected
   useEffect(() => {
     if (!isOpen) return;
     
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && openAiStatus === 'connected' && anthropicStatus === 'connected') {
+      if (e.key === 'Escape' && e.metaKey && openAiStatus === 'connected' && anthropicStatus === 'connected') {
+        e.preventDefault();
         e.stopPropagation();
         handleDone();
       }
@@ -197,13 +198,13 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
           >
             {/* Header */}
             <div className="px-6 pt-6 pb-4 text-center border-b border-smoke/30 relative">
-              {/* ESC button - top right */}
+              {/* ⌘ESC button - top right */}
               {openAiStatus === 'connected' && anthropicStatus === 'connected' && (
                 <button
                   onClick={handleDone}
-                  className="absolute top-4 right-4 p-1 rounded text-[10px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer aspect-square flex items-center justify-center"
+                  className="absolute top-4 right-4 px-1.5 py-1 rounded text-[10px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer flex items-center justify-center gap-0.5"
                 >
-                  ESC
+                  <span>⌘</span><span>ESC</span>
                 </button>
               )}
               
@@ -351,7 +352,7 @@ export function ApiKeyModal({ isOpen, onComplete, initialOpenAiKey, initialAnthr
                     <div>
                       <h3 className="text-sm font-sans text-pearl font-medium flex items-center gap-2">
                         ElevenLabs
-                        <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full text-[9px] font-mono font-medium">OPTIONAL</span>
+                        <span className="px-1 py-0.5 bg-amber-500/15 text-amber-400/80 border border-amber-500/25 rounded-full text-[8px] font-mono font-medium leading-none">OPTIONAL</span>
                       </h3>
                       <p className="text-[10px] text-ash/60 font-mono">Voice transcription</p>
                     </div>

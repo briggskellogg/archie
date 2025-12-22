@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useScribe, CommitStrategy, type ScribeStatus } from '@elevenlabs/react'
 import { fetchToken } from '../lib/token'
 
@@ -82,6 +82,14 @@ export function useScribeTranscription({
   // Compute full transcript from segments
   const transcript = segments.join(' ')
 
+  // Reactively clear isConnecting when scribe.isConnected becomes true
+  // This prevents the amber->gray->amber flash by ensuring we stay amber until truly connected
+  useEffect(() => {
+    if (scribe.isConnected && isConnecting) {
+      setIsConnecting(false)
+    }
+  }, [scribe.isConnected, isConnecting])
+
   const start = useCallback(async () => {
     if (!apiKey) {
       console.error('No API key provided')
@@ -98,10 +106,8 @@ export function useScribeTranscription({
       console.log('Token received, connecting to scribe...')
       await scribe.connect({ token })
       console.log('Scribe connected, status:', scribe.status)
-      // Small delay to ensure scribe.isConnected has updated before we clear isConnecting
-      // This prevents the amber->gray->green flash
-      await new Promise(resolve => setTimeout(resolve, 50))
-      setIsConnecting(false)
+      // NOTE: Don't setIsConnecting(false) here - let the useEffect below handle it
+      // when scribe.isConnected actually becomes true
     } catch (error) {
       console.error('Start transcription error:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to start transcription'

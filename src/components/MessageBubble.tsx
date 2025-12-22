@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import { PartyPopper } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { Message, AgentType } from '../types';
 import { AGENTS, USER_PROFILES, GOVERNOR } from '../constants/agents';
 import { useAppStore } from '../store';
@@ -107,7 +107,7 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
               <div 
                 className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center bg-amber-500 z-10"
               >
-                <PartyPopper className="w-2.5 h-2.5 text-obsidian" strokeWidth={2.5} />
+                <Sparkles className="w-2.5 h-2.5 text-obsidian" strokeWidth={2.5} />
               </div>
             )}
           </div>
@@ -150,8 +150,8 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
           }`}
           style={{ maxWidth: 'calc(75vw - 60px)' }}
         >
-          {/* Agent/Governor name tag - compact */}
-          {!isUser && agent && (
+          {/* Agent name tag - compact */}
+          {!isUser && !isSystem && agent && (
             <span 
               className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-medium mb-1.5"
               style={{ 
@@ -164,7 +164,7 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
           )}
           
           <div 
-            className="message-content leading-snug text-[13px] font-mono prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-1.5 prose-strong:font-semibold prose-code:bg-smoke/30 prose-code:px-1 prose-code:rounded prose-code:text-[12px]"
+            className="leading-snug text-[13px] font-mono prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-1.5 prose-strong:font-semibold prose-code:bg-smoke/30 prose-code:px-1 prose-code:rounded prose-code:text-[12px]"
             style={!isUser && agent ? { color: `${agent.color}dd` } : undefined}
           >
             {isTyping ? (

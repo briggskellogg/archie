@@ -92,6 +92,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     apiKey: effectiveElevenLabsKey,
     onError: (err) => setError(err.message),
   });
+
   
   // Sync transcript to input when committed
   useEffect(() => {
