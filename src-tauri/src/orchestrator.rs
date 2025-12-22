@@ -338,7 +338,7 @@ DECISION CRITERIA:
 CONVERSATION HISTORY:
 {history_context}
 
-Respond with ONLY valid JSON:
+Respond with ONLY valid JSON. No explanations. No rationale. No bullet points. Just the raw JSON object:
 {{"primary": "agent_name", "add_secondary": true/false, "secondary": "agent_name or null", "type": "addition/rebuttal/debate or null"}}"#,
             instinct_w * 100.0,
             logic_w * 100.0,
@@ -362,11 +362,16 @@ Respond with ONLY valid JSON:
             ThinkingBudget::None
         ).await?;
         
-        // Parse JSON response
+        // Parse JSON response - extract just the JSON object (first { to last })
         let cleaned = response.trim().trim_start_matches("```json").trim_end_matches("```").trim();
+        let json_str = if let (Some(start), Some(end)) = (cleaned.find('{'), cleaned.rfind('}')) {
+            &cleaned[start..=end]
+        } else {
+            cleaned
+        };
         
-        let decision: OrchestratorDecision = serde_json::from_str(cleaned).map_err(|e| {
-            format!("Failed to parse orchestrator response: {}. Response was: {}", e, cleaned)
+        let decision: OrchestratorDecision = serde_json::from_str(json_str).map_err(|e| {
+            format!("Failed to parse orchestrator response: {}. Response was: {}", e, json_str)
         })?;
         
         logging::log_routing(None, &format!(

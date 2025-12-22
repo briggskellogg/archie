@@ -192,6 +192,9 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   const handleWindowClose = useCallback(async () => {
     if (isClosingRef.current) return; // Already handling close
     
+    // Get window reference immediately before any async operations
+    const appWindow = getCurrentWindow();
+    
     // Check if there's a conversation to archive
     if (currentConversation && messages.length > 1) {
       // Ask user if they want to archive before closing
@@ -216,8 +219,14 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       }
     }
     
-    // Close the window
-    await getCurrentWindow().destroy();
+    // Force close the window (destroy bypasses the close event to avoid infinite loop)
+    try {
+      await appWindow.destroy();
+    } catch (err) {
+      console.error('Failed to destroy window:', err);
+      // Fallback: try close as last resort
+      await appWindow.close();
+    }
   }, [currentConversation, messages.length]);
   
   // Listen for window close request
