@@ -4,7 +4,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { MessageSquarePlus, Sparkles, ExternalLink, ShieldCheck, X, Minus, Square } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
-import { DebateIndicator } from './DebateIndicator';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { ProfileSwitcher } from './ProfileSwitcher';
 import { useAppStore } from '../store';
@@ -632,8 +631,6 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
       className={`flex flex-col h-full ${debateMode ? (debateMode === 'intense' ? 'debate-intense' : 'debate-mild') : ''}`}
       style={getBackgroundStyle()}
     >
-      {/* Debate indicator */}
-      <DebateIndicator mode={debateMode} />
       
       {/* Governor notification toast */}
       <GovernorNotification
