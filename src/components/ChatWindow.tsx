@@ -323,8 +323,8 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   const toggleTranscription = useCallback(async () => {
     if (!effectiveElevenLabsKey) {
       setGovernorNotification({
-        message: 'Add your ElevenLabs API key to enable voice transcription.',
-        actionLabel: 'Open Settings',
+        message: 'elevenlabs_key_prompt', // Special key for custom rendering
+        actionLabel: 'Open Profile',
         onAction: onOpenSettings,
       });
       return;

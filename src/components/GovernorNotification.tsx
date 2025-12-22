@@ -109,13 +109,24 @@ export function GovernorNotification({ message, isVisible, onDismiss, actionLabe
                 <p className="text-[11px] text-ash/60 font-mono">Thinking...</p>
               ) : (
                 <>
-                  <p className="text-[11px] text-pearl/90 font-mono leading-relaxed">
-                    {message}
-                  </p>
+                  {/* Special handling for ElevenLabs key prompt */}
+                  {message === 'elevenlabs_key_prompt' ? (
+                    <p className="text-[11px] text-pearl/90 font-mono leading-relaxed">
+                      Go to your profile and click{' '}
+                      <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-charcoal/80 border border-smoke/50 rounded text-[10px] font-mono text-ash/80 mx-0.5">
+                        <span className="text-[9px]">⌘</span>K
+                      </kbd>{' '}
+                      to add your ElevenLabs API key for voice transcription.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-pearl/90 font-mono leading-relaxed">
+                      {message}
+                    </p>
+                  )}
                   {actionLabel && onAction && (
                     <button
                       onClick={handleAction}
-                      className="mt-2 px-3 py-1.5 text-[10px] font-mono font-medium rounded-lg bg-aurora/20 text-aurora hover:bg-aurora/30 transition-colors cursor-pointer"
+                      className="mt-2.5 w-full px-3 py-2 text-[10px] font-mono font-medium rounded-lg bg-aurora/20 text-aurora hover:bg-aurora/30 transition-colors cursor-pointer text-center"
                     >
                       {actionLabel}
                     </button>
