@@ -593,23 +593,23 @@ export function ChatWindow({ onOpenSettings, onOpenReport }: ChatWindowProps) {
           {/* Custom window controls - always visible */}
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => getCurrentWindow().close()}
+              onClick={async () => { await getCurrentWindow().close(); }}
               className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400 transition-colors cursor-pointer flex items-center justify-center group"
               title="Close"
             >
               <X className="w-2 h-2 text-red-900 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
             </button>
             <button
-              onClick={() => getCurrentWindow().minimize()}
+              onClick={async () => { await getCurrentWindow().minimize(); }}
               className="w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-400 transition-colors cursor-pointer flex items-center justify-center group"
               title="Minimize"
             >
               <Minus className="w-2 h-2 text-yellow-900 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
             </button>
             <button
-              onClick={() => getCurrentWindow().toggleMaximize()}
+              onClick={async () => { await getCurrentWindow().setFullscreen(!(await getCurrentWindow().isFullscreen())); }}
               className="w-3 h-3 rounded-full bg-green-500 hover:bg-green-400 transition-colors cursor-pointer flex items-center justify-center group"
-              title="Maximize"
+              title="Fullscreen"
             >
               <Square className="w-1.5 h-1.5 text-green-900 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
             </button>
