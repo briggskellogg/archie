@@ -98,6 +98,9 @@ export function useScribeTranscription({
       console.log('Token received, connecting to scribe...')
       await scribe.connect({ token })
       console.log('Scribe connected, status:', scribe.status)
+      // Small delay to ensure scribe.isConnected has updated before we clear isConnecting
+      // This prevents the amber->gray->green flash
+      await new Promise(resolve => setTimeout(resolve, 50))
       setIsConnecting(false)
     } catch (error) {
       console.error('Start transcription error:', error)
