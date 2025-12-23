@@ -762,22 +762,18 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       />
       
       {/* Header - Clean, centered logo with space for macOS window controls */}
-      {/* #region agent log */}
       <header 
         className="flex items-center justify-between px-4 py-2 border-b border-smoke/30 bg-obsidian/80 backdrop-blur-md cursor-default"
         onMouseDown={async (e) => {
           const isButton = (e.target as HTMLElement).closest('button');
-          fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:header',message:'Header mousedown',data:{isButton:!!isButton,target:(e.target as HTMLElement).tagName},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
           if (isButton) return;
           try {
             await getCurrentWindow().startDragging();
-            fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:header',message:'startDragging succeeded',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
           } catch (err) {
-            fetch('http://127.0.0.1:7242/ingest/962f7550-5ed1-4eac-a6be-f678c82650b8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatWindow.tsx:header',message:'startDragging failed',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+            // Dragging failed - ignore
           }
         }}
       >
-      {/* #endregion */}
         {/* Left controls - Window buttons + New Chat + Agents */}
         <div className="flex items-center gap-4">
           {/* Custom window controls - always visible */}
@@ -825,7 +821,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             </button>
             
             {/* Disco conversation */}
-            <div className="relative group/disco">
+            <div className="relative group/disco z-10 hover:z-[200]">
               <button
                 onClick={() => handleNewConversation(true)}
                 className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all cursor-pointer ${
@@ -840,7 +836,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
               </button>
               
               {/* Disco Mode tooltip - appears below */}
-              <div className="absolute top-full left-1/2 -translate-x-1/2 pt-2 opacity-0 invisible group-hover/disco:opacity-100 group-hover/disco:visible transition-all z-[100] pointer-events-none group-hover/disco:pointer-events-auto">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 pt-2 opacity-0 invisible group-hover/disco:opacity-100 group-hover/disco:visible transition-all z-[200] pointer-events-none group-hover/disco:pointer-events-auto">
                 <div className="w-[220px] px-3 py-2.5 bg-obsidian border border-amber-500/40 rounded-lg shadow-xl">
                   <h4 className="text-xs font-sans font-medium text-amber-400 mb-1">Disco Mode</h4>
                   <p className="text-[10px] text-ash/70 font-mono leading-relaxed">
