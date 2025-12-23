@@ -222,44 +222,33 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   
   // Handle window close with archiving
   const handleWindowClose = useCallback(async () => {
-    if (isClosingRef.current) return; // Already handling close
+    if (isClosingRef.current) return;
     
-    // Get window reference immediately before any async operations
     const appWindow = getCurrentWindow();
     
-    // Check if there's a conversation to archive
     if (currentConversation && messages.length > 1) {
-      // Ask user to confirm close
       const shouldClose = await confirm(
         "This will end your current conversation, but don't worry — it will be stored in Intersect's knowledge base.",
         { title: 'Intersect', kind: 'info', okLabel: 'Close', cancelLabel: 'Cancel' }
       );
       
-      // If user clicked Cancel, return to app without closing
-      if (!shouldClose) {
-        return;
-      }
+      if (!shouldClose) return;
       
-      // User confirmed close - archive in background and close
       isClosingRef.current = true;
       
-      try {
-        await finalizeConversation(currentConversation.id);
-      } catch (err) {
+      // Fire and forget - don't block window close
+      finalizeConversation(currentConversation.id).catch(err => {
         console.error('Failed to finalize on close:', err);
-      }
+      });
     } else {
-      // No conversation to archive, just mark as closing
       isClosingRef.current = true;
     }
     
-    // Force close the window - try multiple methods
     try {
       await appWindow.destroy();
     } catch (err) {
       console.error('Failed to destroy window:', err);
       try {
-        // Reset ref so we can try again if this also fails
         isClosingRef.current = false;
         await appWindow.close();
       } catch (err2) {
@@ -274,7 +263,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     const appWindow = getCurrentWindow();
     
     const unlisten = appWindow.onCloseRequested(async (event) => {
-      event.preventDefault(); // Prevent default close
+      event.preventDefault();
       await handleWindowClose();
     });
     
