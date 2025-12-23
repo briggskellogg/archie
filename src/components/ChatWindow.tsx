@@ -775,7 +775,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         }}
       >
         {/* Left controls - Window buttons + New Chat + Agents */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 relative z-20">
           {/* Custom window controls - always visible */}
           <div className="flex items-center gap-1.5">
             <button
@@ -946,7 +946,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-3 justify-end">
+        <div className="flex items-center gap-3 justify-end relative z-10">
           {/* Profile Switcher - opens profile modal */}
           <ProfileSwitcher onOpenProfileModal={onOpenSettings} />
           
