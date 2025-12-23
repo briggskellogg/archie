@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { confirm } from '@tauri-apps/plugin-dialog';
-import { MessageSquarePlus, Zap, ShieldCheck, X, Minus, Square, Mic } from 'lucide-react';
+import { MessageSquare, BotMessageSquare, ShieldCheck, X, Minus, Square, Mic } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { ProfileSwitcher } from './ProfileSwitcher';
@@ -21,7 +21,7 @@ import {
 import { useScribeTranscription } from '../hooks/useScribeTranscription';
 import { v4 as uuidv4 } from 'uuid';
 import governorIcon from '../assets/governor.png';
-import bekLogo from '../assets/BEK.png';
+import spiritAnimal from '../assets/spirit_animal.png';
 import { GovernorNotification } from './GovernorNotification';
 
 interface ChatWindowProps {
@@ -819,15 +819,55 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             </button>
           </div>
 
-          {/* New conversation */}
-          <button
-            onClick={() => handleNewConversation(false)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-ash hover:text-pearl hover:bg-smoke/20 transition-all group cursor-pointer"
-            title="New conversation (⌘N)"
-          >
-            <MessageSquarePlus className="w-4 h-4" strokeWidth={1.5} />
-            <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘N</kbd>
-          </button>
+          {/* New conversation buttons - in a pill container */}
+          <div className="flex items-center bg-charcoal/60 rounded-full px-1.5 py-1 border border-smoke/30">
+            {/* Normal conversation */}
+            <button
+              onClick={() => handleNewConversation(false)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all cursor-pointer ${
+                !isDiscoConversation()
+                  ? 'text-pearl bg-smoke/30'
+                  : 'text-ash/60 hover:text-ash hover:bg-smoke/20'
+              }`}
+              title="New conversation (⌘N)"
+            >
+              <MessageSquare className="w-4 h-4" strokeWidth={1.5} />
+              <kbd className="text-[8px] font-mono text-ash/40">⌘N</kbd>
+            </button>
+            
+            {/* Disco conversation */}
+            <div className="relative group/disco">
+              <button
+                onClick={() => handleNewConversation(true)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all cursor-pointer ${
+                  isDiscoConversation()
+                    ? 'bg-amber-500/20 text-amber-400'
+                    : 'text-ash/60 hover:text-ash hover:bg-smoke/20'
+                }`}
+                title="New Disco conversation (⌘D)"
+              >
+                <BotMessageSquare className="w-4 h-4" strokeWidth={1.5} />
+                <kbd className="text-[8px] font-mono text-ash/40">⌘D</kbd>
+              </button>
+              
+              {/* Disco Mode tooltip */}
+              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-[280px] px-4 py-3 bg-obsidian/95 border border-amber-500/30 rounded-xl opacity-0 invisible group-hover/disco:opacity-100 group-hover/disco:visible transition-all shadow-xl z-50 pointer-events-none group-hover/disco:pointer-events-auto">
+                <h4 className="text-sm font-sans font-semibold text-amber-400 mb-2">Disco Mode</h4>
+                <p className="text-xs text-silver/80 font-mono leading-relaxed mb-2">
+                  Start a new conversation where the agents are intense, opinionated, and challenging. Inspired by the skill mechanics in{' '}
+                  <a 
+                    href="https://discoelysium.com" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-amber-400 hover:text-amber-300 underline underline-offset-2"
+                  >
+                    Disco Elysium
+                  </a>
+                  . Use when you want to be pushed more than helped.
+                </p>
+              </div>
+            </div>
+          </div>
           
           {/* Agent toggles - in a pill container */}
           <div className="flex items-center gap-1.5 bg-charcoal/60 rounded-full px-2 py-1.5 border border-smoke/30">
@@ -903,32 +943,6 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             })}
           </div>
           
-          {/* New Disco Conversation button */}
-          <div className="relative group/disco">
-            <button
-              onClick={() => handleNewConversation(true)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all cursor-pointer ${
-                isDiscoConversation()
-                  ? 'bg-amber-500/20 border border-amber-500/50 text-amber-400'
-                  : 'text-ash/50 hover:text-ash hover:bg-smoke/20'
-              }`}
-              title="New Disco conversation (⌘D)"
-            >
-              <Zap 
-                className="w-4 h-4" 
-                strokeWidth={1.5}
-              />
-              <kbd className="text-[8px] font-mono text-ash/40">⌘D</kbd>
-            </button>
-            
-            {/* Disco Conversation tooltip */}
-            <div className="absolute top-full mt-2 right-0 w-[240px] px-3 py-2.5 bg-obsidian/95 border border-amber-500/30 rounded-xl opacity-0 invisible group-hover/disco:opacity-100 group-hover/disco:visible transition-all shadow-xl z-50 pointer-events-none">
-              <h4 className="text-xs font-sans font-medium text-amber-500 mb-1">Start Disco Conversation</h4>
-              <p className="text-[10px] text-silver/80 font-mono leading-relaxed">
-                Begin a new conversation where ALL agents are intense, opinionated, and challenging. Inspired by Disco Elysium. Use when you want to be pushed, not helped.
-              </p>
-            </div>
-          </div>
         </div>
         
         {/* Centered logo */}
@@ -1174,7 +1188,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         </div>
       </div>
       
-      {/* BEK logo - absolute bottom right */}
+      {/* Spirit Animal - absolute bottom right */}
       <a 
         href="https://briggskellogg.com" 
         target="_blank" 
@@ -1182,9 +1196,9 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         className="absolute bottom-3 right-4 cursor-pointer"
       >
         <img 
-          src={bekLogo} 
-          alt="BEK" 
-          className="h-[14px] w-auto opacity-30 hover:opacity-100 transition-opacity duration-200"
+          src={spiritAnimal} 
+          alt="Spirit Animal" 
+          className="h-5 w-auto opacity-40 hover:opacity-100 transition-opacity duration-200"
         />
       </a>
     </div>
