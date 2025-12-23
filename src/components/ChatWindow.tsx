@@ -794,7 +794,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           {/* Custom window controls - always visible */}
           <div className="flex items-center gap-1.5">
             <button
-              onClick={async () => { await getCurrentWindow().close(); }}
+              onClick={handleWindowClose}
               className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400 transition-colors cursor-pointer flex items-center justify-center group"
               title="Close"
             >
@@ -1187,7 +1187,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         <div className="flex items-center justify-center gap-1.5 mt-2">
           <ShieldCheck className="w-3.5 h-3.5 text-cyan-500/60" strokeWidth={1.5} />
           <span className="text-[11px] text-ash/40 font-mono">
-            Your data stays on your device and is never used to train models
+            Your data stays on this device and is never used to train models... probably.
           </span>
         </div>
       </div>
