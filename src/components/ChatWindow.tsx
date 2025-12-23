@@ -216,6 +216,35 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       }
     }
   }, [isLoading]);
+  
+  // MutationObserver: Keep scrolled to bottom as typewriter effect grows content
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    let lastScrollHeight = container.scrollHeight;
+    
+    const mutationObserver = new MutationObserver(() => {
+      // Check if content height changed
+      if (container.scrollHeight !== lastScrollHeight) {
+        lastScrollHeight = container.scrollHeight;
+        // Only auto-scroll if user is at/near the bottom
+        if (!userScrolledUp.current) {
+          // Use instant scroll for smoother following during typing
+          container.scrollTop = container.scrollHeight;
+        }
+      }
+    });
+    
+    // Observe all DOM changes within the messages container
+    mutationObserver.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    
+    return () => mutationObserver.disconnect();
+  }, []);
 
   // Track close handling
   const isClosingRef = useRef(false);
@@ -828,7 +857,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             </button>
             
             {/* Disco conversation */}
-            <div className="relative group/disco z-10 hover:z-[200]">
+            <div className="relative group/disco hover:z-[200]">
               <button
                 onClick={() => handleNewConversation(true)}
                 className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all cursor-pointer ${
@@ -866,7 +895,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           </div>
           
           {/* Agent toggles - in a pill container */}
-          <div className="flex items-center gap-1.5 bg-charcoal/60 rounded-full px-2 py-1.5 border border-smoke/30">
+          <div className="flex items-center gap-1.5 bg-charcoal/60 rounded-full px-2 py-1.5 border border-smoke/30 relative z-0">
             {AGENT_ORDER.map((agentId, index) => {
               // Use disco agents config if in disco conversation
               const isDisco = isDiscoConversation();
