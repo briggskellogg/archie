@@ -52,8 +52,8 @@ export const DISCO_AGENTS: Record<AgentType, AgentConfig> = {
   instinct: {
     id: 'instinct',
     name: 'Swarm',
-    color: '#F59E0B', // Amber - more intense
-    softColor: '#F59E0B15',
+    color: '#EF4444', // Red - matching instinct theme
+    softColor: '#EF444415',
     description: 'Raw impulse, unfiltered instinct, the part that moves before thinking',
     avatar: discoSnapAvatar,
   },

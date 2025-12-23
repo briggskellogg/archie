@@ -1030,7 +1030,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         {/* Thinking indicator */}
         <AnimatePresence>
           {isLoading && (
-            <ThinkingIndicator agent={thinkingAgent} phase={thinkingPhase} />
+            <ThinkingIndicator agent={thinkingAgent} phase={thinkingPhase} isDisco={isDiscoConversation()} />
           )}
         </AnimatePresence>
 

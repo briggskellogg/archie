@@ -1,18 +1,20 @@
 import { motion } from 'framer-motion';
 import { AgentType } from '../types';
-import { AGENTS, GOVERNOR } from '../constants/agents';
+import { AGENTS, DISCO_AGENTS, GOVERNOR } from '../constants/agents';
 
 interface ThinkingIndicatorProps {
   agent: AgentType | 'system' | null;
   phase: 'routing' | 'thinking';
+  isDisco?: boolean;
 }
 
-export function ThinkingIndicator({ agent, phase }: ThinkingIndicatorProps) {
+export function ThinkingIndicator({ agent, phase, isDisco = false }: ThinkingIndicatorProps) {
   // During routing phase, show Governor; during thinking phase, show the agent
   const isRouting = phase === 'routing';
+  const agentConfig = isDisco ? DISCO_AGENTS : AGENTS;
   const getAgentConfig = () => {
     if (isRouting || !agent || agent === 'system') return GOVERNOR;
-    return AGENTS[agent];
+    return agentConfig[agent];
   };
   const config = getAgentConfig();
   const statusText = isRouting ? 'routing...' : 'is thinking...';
@@ -29,12 +31,7 @@ export function ThinkingIndicator({ agent, phase }: ThinkingIndicatorProps) {
       <div className="flex gap-2.5 items-center">
         {/* Avatar */}
         <div className="flex-shrink-0">
-          <div 
-            className="w-7 h-7 rounded-full overflow-hidden"
-            style={{ 
-              boxShadow: `0 0 0 1px ${config.color}60`,
-            }}
-          >
+          <div className="w-8 h-8 rounded-full overflow-hidden">
             <img 
               src={config.avatar} 
               alt={config.name}
@@ -74,7 +71,7 @@ export function ThinkingIndicator({ agent, phase }: ThinkingIndicatorProps) {
         {isRouting && agent && agent !== 'system' && (
           <>
             <span className="mx-1">→</span>
-            <span style={{ color: AGENTS[agent].color }}>{AGENTS[agent].name}</span>
+            <span style={{ color: agentConfig[agent].color }}>{agentConfig[agent].name}</span>
           </>
         )}
       </div>

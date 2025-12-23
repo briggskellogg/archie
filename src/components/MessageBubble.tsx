@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles } from 'lucide-react';
 import { Message, AgentType } from '../types';
-import { AGENTS, USER_PROFILES, GOVERNOR } from '../constants/agents';
+import { AGENTS, DISCO_AGENTS, USER_PROFILES, GOVERNOR } from '../constants/agents';
 import { useAppStore } from '../store';
 
 interface MessageBubbleProps {
@@ -15,7 +14,9 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
   const { activePersonaProfile } = useAppStore();
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
-  const agent = isUser ? null : isSystem ? GOVERNOR : AGENTS[message.role as AgentType];
+  const agentConfig = message.isDisco ? DISCO_AGENTS : AGENTS;
+  const agent = isUser ? null : isSystem ? GOVERNOR : agentConfig[message.role as AgentType];
+  
   
   // Typewriter effect for agent messages
   const [displayedText, setDisplayedText] = useState(() => isUser ? message.content : '');
@@ -92,24 +93,13 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
         {/* Agent avatar - aligned with name tag (slight offset from top) */}
         {agent && (
           <div className="relative flex-shrink-0 mt-[7px]">
-            <div 
-              className="w-8 h-8 rounded-full overflow-hidden"
-              style={{ boxShadow: `0 0 0 2px ${message.isDisco ? '#EAB308' : agent.color}40` }}
-            >
+            <div className="w-8 h-8 rounded-full overflow-hidden">
               <img 
                 src={agent.avatar} 
                 alt={agent.name}
                 className="w-full h-full object-cover"
               />
             </div>
-            {/* Disco mode sparkles badge - top right, like verification badge */}
-            {message.isDisco && (
-              <div 
-                className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center bg-amber-500 z-10"
-              >
-                <Sparkles className="w-2.5 h-2.5 text-obsidian" strokeWidth={2.5} />
-              </div>
-            )}
           </div>
         )}
 

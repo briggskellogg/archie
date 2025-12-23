@@ -1,13 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ExternalLink, Star, Edit2, ChevronDown, Calendar, Key } from 'lucide-react';
+import { ExternalLink, Edit2, Calendar, Key } from 'lucide-react';
 import { useAppStore } from '../store';
 import { AGENTS } from '../constants/agents';
 import { 
   getUserProfile, 
   getAllPersonaProfiles,
   updatePersonaProfileName,
-  setDefaultPersonaProfile,
   setActivePersonaProfile as setActivePersonaProfileBackend,
   finalizeConversation,
 } from '../hooks/useTauri';
@@ -29,10 +28,41 @@ interface SettingsProps {
   onClose: () => void;
 }
 
+// Types for profile data in radar chart
+interface ProfileForChart {
+  id: string;
+  name: string;
+  dominantTrait: string;
+  isActive: boolean;
+  isDefault: boolean;
+}
+
+interface RadarChartProps {
+  weights: { instinct: number; logic: number; psyche: number };
+  targetWeights?: { instinct: number; logic: number; psyche: number };
+  profiles?: ProfileForChart[];
+  onSwitchProfile?: (profileId: string) => void;
+  editingProfileName?: string | null;
+  tempProfileName?: string;
+  onStartEdit?: (profileId: string, currentName: string) => void;
+  onSaveEdit?: (profileId: string) => void;
+  onCancelEdit?: () => void;
+  onTempNameChange?: (name: string) => void;
+}
+
 // Radar chart component for agent weights with profile pictures
-function RadarChart({ weights, targetWeights }: { weights: { instinct: number; logic: number; psyche: number }; targetWeights?: { instinct: number; logic: number; psyche: number } }) {
-  // Use targetWeights for dominance calculation (instant), weights for animation
-  const dominanceWeights = targetWeights || weights;
+function RadarChart({ 
+  weights, 
+  targetWeights: _targetWeights,
+  profiles = [],
+  onSwitchProfile,
+  editingProfileName,
+  tempProfileName,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onTempNameChange,
+}: RadarChartProps) {
   const size = 280;
   const center = size / 2;
   const radius = 85; // Slightly larger for better visual impact
@@ -187,30 +217,97 @@ function RadarChart({ weights, targetWeights }: { weights: { instinct: number; l
         ))}
       </svg>
       
-      {/* Profile pictures at corners - size scales with weight */}
+      {/* Profile pictures at corners - size scales with weight, clickable for profile switching */}
       {agents.map(({ id, label, weight }) => {
         const typeLabels = { instinct: 'Instinct', logic: 'Logic', psyche: 'Psyche' };
         const imgSize = getImageSize(weight);
-        // Check if this is the dominant trait (using target weights for instant highlight)
-        const isDominant = dominanceWeights[id] === Math.max(dominanceWeights.instinct, dominanceWeights.logic, dominanceWeights.psyche);
+        // Find profile with this dominant trait
+        const profileForAgent = profiles.find(p => p.dominantTrait === id);
+        const isActiveProfile = profileForAgent?.isActive ?? false;
+        const hasProfile = !!profileForAgent;
         
         return (
           <div
             key={id}
-            className="absolute flex flex-col items-center transition-all duration-300 group"
+            className={`absolute flex flex-col items-center transition-all duration-300 group ${hasProfile && !isActiveProfile ? 'cursor-pointer hover:opacity-90' : ''}`}
             style={{
               left: label.x - imgSize / 2,
               top: label.y - imgSize / 2 - 8,
             }}
+            onClick={() => {
+              if (profileForAgent && !isActiveProfile && onSwitchProfile) {
+                onSwitchProfile(profileForAgent.id);
+              }
+            }}
           >
+            {/* Profile name pill - above the image */}
+            {profileForAgent && (
+              <div 
+                className={`absolute -top-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-obsidian/90 ${editingProfileName === profileForAgent.id ? '' : 'border border-smoke/50'}`}
+              >
+                {editingProfileName === profileForAgent.id ? (
+                  <input
+                    type="text"
+                    value={tempProfileName}
+                    onChange={(e) => onTempNameChange?.(e.target.value)}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') onSaveEdit?.(profileForAgent.id);
+                      if (e.key === 'Escape') onCancelEdit?.();
+                    }}
+                    onBlur={() => onSaveEdit?.(profileForAgent.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-transparent border-none px-0 py-0 text-[11px] font-mono outline-none w-20 caret-current"
+                    style={{ color: AGENTS[id].color, caretColor: AGENTS[id].color }}
+                    autoFocus
+                  />
+                ) : (
+                  <span 
+                    className="text-[11px] font-mono whitespace-nowrap"
+                    style={{ color: AGENTS[id].color }}
+                  >
+                    {profileForAgent.name}
+                  </span>
+                )}
+                {editingProfileName !== profileForAgent.id && isActiveProfile && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStartEdit?.(profileForAgent.id, profileForAgent.name);
+                    }}
+                    className="p-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-ash transition-colors cursor-pointer flex-shrink-0"
+                    title="Edit name"
+                  >
+                    <Edit2 className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+            )}
+            
             <div className="relative">
+              {/* Pulsing amber border for active profile - matches chat user avatar */}
+              {isActiveProfile && (
+                <motion.div
+                  className="absolute inset-0 rounded-full"
+                  style={{ 
+                    boxShadow: '0 0 0 2px #EAB308',
+                  }}
+                  animate={{ 
+                    opacity: [0.65, 0.9, 0.65],
+                  }}
+                  transition={{ 
+                    duration: 3,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
+                />
+              )}
               <div
-                className="rounded-full overflow-hidden border-2 transition-all duration-300 relative"
+                className={`rounded-full overflow-hidden transition-all duration-300 relative ${!hasProfile ? 'opacity-40' : isActiveProfile ? '' : 'opacity-50 hover:opacity-70 border-2'}`}
                 style={{
                   width: imgSize,
                   height: imgSize,
-                  borderColor: AGENTS[id].color,
-                  boxShadow: `0 0 ${8 + weight * 8}px ${AGENTS[id].color}${Math.round(40 + weight * 30).toString(16)}`,
+                  borderColor: !isActiveProfile ? `${AGENTS[id].color}40` : undefined,
                 }}
               >
                 <img
@@ -219,15 +316,6 @@ function RadarChart({ weights, targetWeights }: { weights: { instinct: number; l
                   className="w-full h-full object-cover"
                 />
               </div>
-              {/* Pulsing green dot for dominant trait - bottom right, overlapping */}
-              {isDominant && (
-                <motion.div
-                  className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-obsidian z-10"
-                  style={{ backgroundColor: '#22C55E' }}
-                  animate={{ opacity: [0.7, 1, 0.7] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                />
-              )}
             </div>
             <div className="flex items-center gap-1.5 mt-2">
               <span 
@@ -355,19 +443,20 @@ function getProfileDescription(weights: { instinct: number; logic: number; psych
 } {
   const personality = getPersonalityType(weights);
   
-  // Confidence builds over 100 messages
-  const confidence = Math.min(100, Math.round((totalMessages / 100) * 100));
+  // De-exponential confidence: fast learning early, rigid at 10k messages
+  // Formula: sqrt(messages/10000) * 100, matches backend calculate_variability
+  const confidence = Math.min(100, Math.round(Math.sqrt(totalMessages / 10000) * 100));
   
   // How weights are forming
   let forming = '';
-  if (totalMessages < 10) {
+  if (confidence < 10) {
     forming = `${confidence}% confident · Still learning your patterns...`;
-  } else if (totalMessages < 50) {
+  } else if (confidence < 50) {
     forming = `${confidence}% confident · Your profile is taking shape.`;
-  } else if (totalMessages < 100) {
-    forming = `${confidence}% confident · Almost there, keep chatting.`;
+  } else if (confidence < 100) {
+    forming = `${confidence}% confident · Becoming more certain about you.`;
   } else {
-    forming = `Profile established · Continues to evolve with you.`;
+    forming = `100% confident · Profile is fully established.`;
   }
   
   return { 
@@ -394,22 +483,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const [showApiModal, setShowApiModal] = useState(false);
   const [editingProfileName, setEditingProfileName] = useState<string | null>(null);
   const [tempProfileName, setTempProfileName] = useState('');
-  const [profilesExpanded, setProfilesExpanded] = useState(false);
-  const profileDropdownRef = useRef<HTMLDivElement>(null);
-  
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    if (!profilesExpanded) return;
-    
-    const handleClickOutside = (event: MouseEvent) => {
-      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
-        setProfilesExpanded(false);
-      }
-    };
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [profilesExpanded]);
   
   // Animated weights for smooth transitions
   const [animatedWeights, setAnimatedWeights] = useState({
@@ -429,7 +502,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     };
     
     const startWeights = { ...animatedWeights };
-    const duration = 500; // ms
+    const duration = 150; // ms - fast transition
     const startTime = performance.now();
     
     const animate = (currentTime: number) => {
@@ -474,17 +547,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
       console.error('Failed to update profile name:', err);
     }
   };
-  
-  const handleSetDefault = async (profileId: string) => {
-    try {
-      await setDefaultPersonaProfile(profileId);
-      const profiles = await getAllPersonaProfiles();
-      setAllPersonaProfiles(profiles);
-    } catch (err) {
-      console.error('Failed to set default profile:', err);
-    }
-  };
-  
   
   const handleSwitchProfile = async (profileId: string) => {
     const currentActive = allPersonaProfiles.find(p => p.isActive);
@@ -579,7 +641,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   </div>
                   
                   <div 
-                    className="rounded-xl pt-4 pb-3 px-4 border border-smoke/30 relative overflow-hidden"
+                    className="rounded-xl pt-4 pb-4 px-4 border border-smoke/30 relative overflow-hidden"
                     style={{
                       // Dynamic gradient based on INVERTED weights (lower = more dominant)
                       // Colors: Logic #00D4FF, Psyche #E040FB, Instinct #EF4444
@@ -599,176 +661,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       })(),
                     }}
                   >
-                    {/* Profile selector - top left */}
-                    {allPersonaProfiles.length > 0 && (() => {
-                      const activeProfile = allPersonaProfiles.find(p => p.isActive);
-                      const otherProfiles = allPersonaProfiles.filter(p => !p.isActive);
-                      
-                      return (
-                        <div ref={profileDropdownRef} className="absolute top-2 left-2 z-20">
-                          {/* Active profile - clickable */}
-                          {activeProfile && (
-                            <div className="relative">
-                              <div
-                                className="relative flex items-center gap-2 w-[160px] px-3 py-1 rounded-full bg-obsidian/50 border border-amber-500/40 hover:bg-obsidian/70 cursor-pointer transition-colors"
-                                onClick={() => {
-                                  if (editingProfileName !== activeProfile.id) {
-                                    setProfilesExpanded(!profilesExpanded);
-                                  }
-                                }}
-                              >
-                                {/* Star on left - filled if default, clickable to set default if not */}
-                                {activeProfile.isDefault ? (
-                                  <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="#EAB308" strokeWidth={0} />
-                                ) : (
-                                  <div
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleSetDefault(activeProfile.id);
-                                    }}
-                                    className="p-0.5 -m-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-amber-500 transition-colors cursor-pointer flex-shrink-0"
-                                    title="Set as default"
-                                  >
-                                    <Star className="w-3 h-3" />
-                                  </div>
-                                )}
-                                
-                                {/* Name - color coded */}
-                                {editingProfileName === activeProfile.id ? (
-                                  <input
-                                    type="text"
-                                    value={tempProfileName}
-                                    onChange={(e) => setTempProfileName(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') handleSaveProfileName(activeProfile.id);
-                                      if (e.key === 'Escape') setEditingProfileName(null);
-                                    }}
-                                    onBlur={() => handleSaveProfileName(activeProfile.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="bg-transparent border-none px-0 py-0 text-xs font-mono text-ivory outline-none flex-1 min-w-0"
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <span 
-                                    className="text-xs font-mono truncate flex-1 min-w-0"
-                                    style={{ color: AGENTS[activeProfile.dominantTrait as keyof typeof AGENTS]?.color || '#e5e7eb' }}
-                                  >
-                                    {activeProfile.name}
-                                  </span>
-                                )}
-                                
-                                {/* Edit button */}
-                                {editingProfileName !== activeProfile.id && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingProfileName(activeProfile.id);
-                                      setTempProfileName(activeProfile.name);
-                                    }}
-                                    className="p-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-ash transition-colors cursor-pointer flex-shrink-0"
-                                    title="Edit name"
-                                  >
-                                    <Edit2 className="w-2.5 h-2.5" />
-                                  </button>
-                                )}
-                                
-                                <ChevronDown 
-                                  className={`w-3 h-3 text-ash/50 flex-shrink-0 transition-transform ${profilesExpanded ? 'rotate-180' : ''}`} 
-                                />
-                              </div>
-                              
-                              {/* Dropdown for other profiles */}
-                              <AnimatePresence>
-                                {profilesExpanded && otherProfiles.length > 0 && (
-                                  <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    transition={{ duration: 0.15 }}
-                                    className="absolute left-0 top-full mt-1 w-[160px] overflow-hidden rounded-lg bg-obsidian/90 border border-smoke/30 shadow-lg"
-                                  >
-                                <div className="py-1">
-                                  {otherProfiles.map((profile) => (
-                                    <div
-                                      key={profile.id}
-                                      onClick={() => {
-                                        if (editingProfileName !== profile.id) {
-                                          handleSwitchProfile(profile.id);
-                                        }
-                                      }}
-                                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-smoke/20 cursor-pointer transition-colors"
-                                    >
-                                      {/* Star on the left */}
-                                      {profile.isDefault ? (
-                                        <Star className="w-2.5 h-2.5 text-amber-500 flex-shrink-0" fill="#EAB308" strokeWidth={0} />
-                                      ) : (
-                                        <div
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleSetDefault(profile.id);
-                                          }}
-                                          className="p-0.5 -m-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-amber-500 transition-colors cursor-pointer flex-shrink-0"
-                                          title="Set as default"
-                                        >
-                                          <Star className="w-2.5 h-2.5" />
-                                        </div>
-                                      )}
-                                      
-                                      {/* Name with truncation - color coded by dominant trait */}
-                                      {editingProfileName === profile.id ? (
-                                        <input
-                                          type="text"
-                                          value={tempProfileName}
-                                          onChange={(e) => setTempProfileName(e.target.value)}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') handleSaveProfileName(profile.id);
-                                            if (e.key === 'Escape') setEditingProfileName(null);
-                                          }}
-                                          onBlur={() => handleSaveProfileName(profile.id)}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="bg-obsidian/60 border border-smoke/40 rounded px-1.5 py-0.5 text-xs font-mono text-ivory outline-none flex-1 min-w-0"
-                                          autoFocus
-                                        />
-                                      ) : (
-                                        <span 
-                                          className="text-xs font-mono truncate flex-1 min-w-0"
-                                          style={{ color: AGENTS[profile.dominantTrait as keyof typeof AGENTS]?.color || '#e5e7eb' }}
-                                        >
-                                          {profile.name}
-                                        </span>
-                                      )}
-                                      
-                                      {/* Edit button */}
-                                      {editingProfileName !== profile.id && (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingProfileName(profile.id);
-                                            setTempProfileName(profile.name);
-                                          }}
-                                          className="p-0.5 rounded hover:bg-smoke/30 text-ash/40 hover:text-ash transition-colors cursor-pointer flex-shrink-0"
-                                          title="Edit name"
-                                        >
-                                          <Edit2 className="w-2.5 h-2.5" />
-                                        </button>
-                                      )}
-                                      
-                                      {/* Message count */}
-                                      <span className="text-[9px] font-mono text-ash/40 flex-shrink-0">
-                                        {profile.messageCount}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    
                     {/* Subtle radial overlay for depth */}
                     <div 
                       className="absolute inset-0 opacity-20"
@@ -789,7 +681,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                         })(),
                       }}
                     />
-                    <div className="relative z-10 pt-20">
+                    
+                    <div className="relative z-10 pt-[84px]">
                       <RadarChart 
                         weights={{
                           instinct: animatedWeights.instinct,
@@ -801,6 +694,23 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                           logic: userProfile.logicWeight,
                           psyche: userProfile.psycheWeight,
                         }}
+                        profiles={allPersonaProfiles.map(p => ({
+                          id: p.id,
+                          name: p.name,
+                          dominantTrait: p.dominantTrait,
+                          isActive: p.isActive,
+                          isDefault: p.isDefault,
+                        }))}
+                        onSwitchProfile={handleSwitchProfile}
+                        editingProfileName={editingProfileName}
+                        tempProfileName={tempProfileName}
+                        onStartEdit={(id, name) => {
+                          setEditingProfileName(id);
+                          setTempProfileName(name);
+                        }}
+                        onSaveEdit={handleSaveProfileName}
+                        onCancelEdit={() => setEditingProfileName(null)}
+                        onTempNameChange={setTempProfileName}
                       />
                     </div>
                     
@@ -865,6 +775,11 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                       );
                     })()}
                   </div>
+                  
+                  {/* Tip explaining profile switching - below the box */}
+                  <p className="text-[10px] text-ash/40 font-mono text-center mt-3">
+                    Click to switch profiles. Switching profiles changes how often a given agent will respond and what types of topics they focus on.
+                  </p>
                 </section>
               )}
 
@@ -877,7 +792,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
             <div className="flex items-center justify-between px-4 py-3 border-t border-smoke/30 flex-shrink-0">
               <div className="flex items-center gap-1.5">
                 <img src={governorTransparent} alt="" className="w-4 h-4 opacity-60" />
-                <p className="text-xs text-ash/60 font-mono">Intersect v0.9.1</p>
+                <p className="text-xs text-ash/60 font-mono">Intersect v0.9.0</p>
               </div>
               <div className="flex items-center gap-2">
                 {userProfile?.apiKey && (

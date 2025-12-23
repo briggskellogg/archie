@@ -202,10 +202,24 @@ pub fn decide_response_heuristic(
     
     // ===== KEYWORD SCORING =====
     // Each agent gets a score based on message keywords
+    // In Disco Mode, INVERT the weights so lower-weighted agents respond MORE
     let mut scores: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
-    scores.insert("instinct", instinct_w);
-    scores.insert("logic", logic_w);
-    scores.insert("psyche", psyche_w);
+    if is_disco {
+        // Invert weights: lower weights become higher scores
+        // This makes under-represented agents speak more in Disco Mode
+        scores.insert("instinct", 1.0 - instinct_w);
+        scores.insert("logic", 1.0 - logic_w);
+        scores.insert("psyche", 1.0 - psyche_w);
+        logging::log_routing(None, &format!(
+            "[HEURISTIC] DISCO MODE - Inverted weights: I={:.2} L={:.2} P={:.2}",
+            1.0 - instinct_w, 1.0 - logic_w, 1.0 - psyche_w
+        ));
+    } else {
+        // Normal mode: higher weights = higher scores
+        scores.insert("instinct", instinct_w);
+        scores.insert("logic", logic_w);
+        scores.insert("psyche", psyche_w);
+    }
     
     // Logic keywords: analytical, planning, debugging, data
     let logic_keywords = ["analyze", "think", "logic", "reason", "plan", "step", "how do i", 
@@ -1199,16 +1213,20 @@ pub enum InteractionType {
 }
 
 /// Calculate variability based on message count
-/// Highly variable early (first 100 messages), exponentially rigid over time
-/// At 10k+ messages, changes are nearly frozen but still possible
+/// De-exponential curve: learns fast early, becomes rigid over time
+/// Reaches 100% confidence (0% variability) at 10k messages
 pub fn calculate_variability(total_messages: i64) -> f64 {
-    // De-exponential curve: 1 / (1 + (messages/100)^1.5)
-    // 0 messages: 1.0 (100% variability)
-    // 100 messages: ~0.41 (41% variability)
-    // 500 messages: ~0.08 (8% variability)
-    // 2000 messages: ~0.018 (1.8% variability)
-    // 10000 messages: ~0.003 (0.3% variability)
-    1.0 / (1.0 + (total_messages as f64 / 100.0).powf(1.5))
+    // De-exponential: steep learning early, gradual refinement later
+    // Formula: 1 - sqrt(messages/10000), clamped to [0, 1]
+    // 0 messages: 1.0 (0% confident, 100% variable)
+    // 100 messages: 0.9 (10% confident) - fast early learning
+    // 1000 messages: 0.68 (32% confident)
+    // 2500 messages: 0.5 (50% confident)
+    // 5000 messages: 0.29 (71% confident)
+    // 7500 messages: 0.13 (87% confident)
+    // 10000+ messages: 0.0 (100% confident, fully rigid)
+    let progress = (total_messages as f64 / 10000.0).min(1.0);
+    1.0 - progress.sqrt()
 }
 
 /// Update agent weights based on interaction (legacy - used for primary/secondary selection)

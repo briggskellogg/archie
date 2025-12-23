@@ -6,20 +6,6 @@ import {
   getActivePersonaProfile,
 } from '../hooks/useTauri';
 
-// API connection status indicator with subtle pulse
-function ApiStatusDot() {
-  const { userProfile } = useAppStore();
-  const isConnected = !!(userProfile?.apiKey && userProfile?.anthropicKey);
-  
-  return (
-    <span 
-      className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}
-      style={{ animation: 'dot-pulse 3s ease-in-out infinite' }}
-      title={isConnected ? 'APIs connected' : 'APIs not connected'}
-    />
-  );
-}
-
 interface ProfileSwitcherProps {
   onOpenProfileModal: () => void;
 }
@@ -74,7 +60,6 @@ export function ProfileSwitcher({ onOpenProfileModal }: ProfileSwitcherProps) {
       >
         {activePersonaProfile.name}
       </span>
-      <ApiStatusDot />
       <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘P</kbd>
     </button>
   );
