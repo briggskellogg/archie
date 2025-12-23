@@ -939,7 +939,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           <h1 className="font-logo text-base font-bold tracking-wide leading-none pointer-events-none text-white">
             Intersect
           </h1>
-          <span className="px-1 py-0.5 bg-smoke/40 border border-smoke/50 rounded text-[10px] font-mono text-ash/70 pointer-events-none leading-none">v1</span>
+          <span className="px-1 py-0.5 bg-smoke/40 border border-smoke/50 rounded text-[10px] font-mono text-ash/70 pointer-events-none leading-none">v0</span>
         </div>
 
         {/* Right controls */}
