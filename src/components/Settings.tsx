@@ -90,10 +90,11 @@ function RadarChart({
   };
   
   // Calculate points for each agent (3 points, 120 degrees apart)
+  // Order matches AGENT_ORDER for hotkeys: ⌘1 Psyche, ⌘2 Logic, ⌘3 Instinct
   const angles = {
-    logic: -90,      // Top
-    psyche: 150,     // Bottom right  
-    instinct: 30,    // Bottom left
+    psyche: -90,     // Top (⌘1)
+    logic: 150,      // Bottom left (⌘2)
+    instinct: 30,    // Bottom right (⌘3)
   };
   
   const getPoint = (agent: 'instinct' | 'logic' | 'psyche', scale: number) => {
@@ -132,10 +133,11 @@ function RadarChart({
   
   const dataPath = `M ${logicPoint.x} ${logicPoint.y} L ${psychePoint.x} ${psychePoint.y} L ${instinctPoint.x} ${instinctPoint.y} Z`;
   
+  // Agents ordered by hotkey (⌘1, ⌘2, ⌘3) matching AGENT_ORDER
   const agents = [
-    { id: 'logic' as const, point: logicPoint, label: getLabelPoint('logic'), weight: weights.logic },
-    { id: 'psyche' as const, point: psychePoint, label: getLabelPoint('psyche'), weight: weights.psyche },
-    { id: 'instinct' as const, point: instinctPoint, label: getLabelPoint('instinct'), weight: weights.instinct },
+    { id: 'psyche' as const, point: psychePoint, label: getLabelPoint('psyche'), weight: weights.psyche, hotkey: 1 },
+    { id: 'logic' as const, point: logicPoint, label: getLabelPoint('logic'), weight: weights.logic, hotkey: 2 },
+    { id: 'instinct' as const, point: instinctPoint, label: getLabelPoint('instinct'), weight: weights.instinct, hotkey: 3 },
   ];
   
   return (
@@ -218,7 +220,7 @@ function RadarChart({
       </svg>
       
       {/* Profile pictures at corners - size scales with weight, clickable for profile switching */}
-      {agents.map(({ id, label, weight }) => {
+      {agents.map(({ id, label, weight, hotkey }) => {
         const typeLabels = { instinct: 'Instinct', logic: 'Logic', psyche: 'Psyche' };
         const imgSize = getImageSize(weight);
         // Find profile with this dominant trait
@@ -333,6 +335,11 @@ function RadarChart({
               >
                 {Math.round(weight * 100)}%
               </span>
+              <kbd 
+                className="text-[8px] font-mono px-1 py-0.5 rounded bg-smoke/30 text-ash/50"
+              >
+                ⌘{hotkey}
+              </kbd>
             </div>
           </div>
         );
