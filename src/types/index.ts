@@ -1,8 +1,8 @@
 // Agent types
 export type AgentType = 'instinct' | 'logic' | 'psyche';
 
-// Agent mode: simple on/off (disco is now conversation-level, not per-agent)
-export type AgentMode = 'off' | 'on';
+// Agent mode: off, on (normal), or disco (intense mode per-agent)
+export type AgentMode = 'off' | 'on' | 'disco';
 
 export type ResponseType = 'primary' | 'addition' | 'rebuttal' | 'debate';
 
@@ -104,5 +104,7 @@ export interface UserContext {
 
 // Debate mode
 export type DebateMode = 'mild' | 'intense' | null;
+
+
 
 

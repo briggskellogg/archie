@@ -239,13 +239,13 @@ export async function sendMessage(
   conversationId: string,
   userMessage: string,
   activeAgents: AgentType[],
-  isDisco: boolean = false
+  discoAgents: AgentType[] = []
 ): Promise<SendMessageResult> {
   return invoke<SendMessageResult>('send_message', {
     conversationId,
     userMessage,
     activeAgents,
-    isDisco,
+    discoAgents,
   });
 }
 

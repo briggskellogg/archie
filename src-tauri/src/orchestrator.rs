@@ -1533,4 +1533,3 @@ pub fn combine_trait_analyses(
     let total = instinct + logic + psyche;
     (instinct / total, logic / total, psyche / total)
 }
-

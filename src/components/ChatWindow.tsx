@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { confirm } from '@tauri-apps/plugin-dialog';
-import { MessageSquare, BotMessageSquare, ShieldCheck, X, Minus, Square, Mic } from 'lucide-react';
+import { BotMessageSquare, ShieldCheck, X, Minus, Square, Mic, Sparkles } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { ProfileSwitcher } from './ProfileSwitcher';
@@ -40,9 +40,11 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     currentConversation,
     setCurrentConversation,
     getActiveAgentsList,
+    getDiscoAgentsList,
     agentModes,
     toggleAgentMode,
-    isDiscoConversation,
+    toggleAllDisco,
+    hasAnyDiscoAgent,
     debateMode,
     setDebateMode,
     isLoading,
@@ -72,34 +74,34 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     onAction?: () => void;
   } | null>(null);
   
-  // Disco tooltip state for fixed positioning (bypasses z-index issues)
-  const [showDiscoTooltip, setShowDiscoTooltip] = useState(false);
-  const [discoTooltipPos, setDiscoTooltipPos] = useState({ x: 0, y: 0 });
-  const discoButtonRef = useRef<HTMLButtonElement>(null);
-  const discoTooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Disco info tooltip state for the agent toggles section
+  const [showDiscoInfoTooltip, setShowDiscoInfoTooltip] = useState(false);
+  const [discoInfoTooltipPos, setDiscoInfoTooltipPos] = useState({ x: 0, y: 0 });
+  const discoInfoButtonRef = useRef<HTMLButtonElement>(null);
+  const discoInfoTooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  const showDiscoTooltipWithDelay = () => {
-    if (discoTooltipTimeoutRef.current) {
-      clearTimeout(discoTooltipTimeoutRef.current);
-      discoTooltipTimeoutRef.current = null;
+  const showDiscoInfoTooltipWithDelay = () => {
+    if (discoInfoTooltipTimeoutRef.current) {
+      clearTimeout(discoInfoTooltipTimeoutRef.current);
+      discoInfoTooltipTimeoutRef.current = null;
     }
-    if (discoButtonRef.current) {
-      const rect = discoButtonRef.current.getBoundingClientRect();
-      setDiscoTooltipPos({ x: rect.left + rect.width / 2, y: rect.bottom });
-      setShowDiscoTooltip(true);
+    if (discoInfoButtonRef.current) {
+      const rect = discoInfoButtonRef.current.getBoundingClientRect();
+      setDiscoInfoTooltipPos({ x: rect.left + rect.width / 2, y: rect.bottom });
+      setShowDiscoInfoTooltip(true);
     }
   };
   
-  const hideDiscoTooltipWithDelay = () => {
-    discoTooltipTimeoutRef.current = setTimeout(() => {
-      setShowDiscoTooltip(false);
+  const hideDiscoInfoTooltipWithDelay = () => {
+    discoInfoTooltipTimeoutRef.current = setTimeout(() => {
+      setShowDiscoInfoTooltip(false);
     }, 150); // Small delay to allow moving to tooltip
   };
   
-  const cancelHideDiscoTooltip = () => {
-    if (discoTooltipTimeoutRef.current) {
-      clearTimeout(discoTooltipTimeoutRef.current);
-      discoTooltipTimeoutRef.current = null;
+  const cancelHideDiscoInfoTooltip = () => {
+    if (discoInfoTooltipTimeoutRef.current) {
+      clearTimeout(discoInfoTooltipTimeoutRef.current);
+      discoInfoTooltipTimeoutRef.current = null;
     }
   };
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -383,11 +385,11 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         switch (e.key.toLowerCase()) {
           case 'n':
             e.preventDefault();
-            handleNewConversation(false); // New normal conversation
+            handleNewConversation(); // New conversation
             break;
           case 'd':
             e.preventDefault();
-            handleNewConversation(true); // New disco conversation
+            toggleAllDisco(); // Toggle all agents to/from disco mode
             break;
           case 'p':
             e.preventDefault();
@@ -461,7 +463,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     }
     
     const activeList = getActiveAgentsList();
-    const isDisco = isDiscoConversation();
+    const discoList = getDiscoAgentsList();
     if (activeList.length === 0) {
       setError('Enable at least one agent');
       return;
@@ -494,7 +496,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     setThinkingAgent('system'); // Governor is routing
     
     try {
-      const result = await sendMessage(currentConversation.id, content, activeList, isDisco);
+      const result = await sendMessage(currentConversation.id, content, activeList, discoList);
       
       // Set debate mode if applicable
       if (result.debate_mode) {
@@ -539,7 +541,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           responseType: response.response_type as Message['responseType'],
           referencesMessageId: response.references_message_id || undefined,
           timestamp: new Date(),
-          isDisco, // Conversation-level disco mode
+          isDisco: discoList.includes(response.agent as AgentType), // Per-agent disco mode
         };
         addMessage(agentMessage);
         
@@ -622,7 +624,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     if (!currentConversation) return;
     
     const activeList = getActiveAgentsList();
-    const isDisco = isDiscoConversation();
+    const discoList = getDiscoAgentsList();
     if (activeList.length === 0) return;
     
     // Reset cancel flag
@@ -646,7 +648,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     setThinkingAgent('system');
     
     try {
-      const result = await sendMessage(currentConversation.id, content, activeList, isDisco);
+      const result = await sendMessage(currentConversation.id, content, activeList, discoList);
       
       if (result.debate_mode) {
         setDebateMode(result.debate_mode as DebateMode);
@@ -679,7 +681,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           responseType: response.response_type as Message['responseType'],
           referencesMessageId: response.references_message_id || undefined,
           timestamp: new Date(),
-          isDisco, // Conversation-level disco mode
+          isDisco: discoList.includes(response.agent as AgentType), // Per-agent disco mode
         };
         addMessage(agentMessage);
         
@@ -726,7 +728,8 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   };
 
   // Handle new conversation - isDisco determines if it's a disco or normal conversation
-  const handleNewConversation = async (isDisco: boolean = false) => {
+  // Handle new conversation - disco mode is now per-agent, not per-conversation
+  const handleNewConversation = async () => {
     // Prevent useEffect from also trying to init (race condition fix)
     hasInitialized.current = true;
     
@@ -744,7 +747,8 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     setDebateMode(null);
     
     try {
-      const conv = await createConversation(isDisco);
+      // Always create normal conversation - disco is per-agent now
+      const conv = await createConversation(false);
       setCurrentConversation(conv);
       
       // Dominant agent is greeting the user
@@ -755,13 +759,16 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       // Get dominant agent greeting
       const openerResult = await getConversationOpener();
       
+      // Check if dominant agent is in disco mode for the opener message
+      const isDominantDisco = agentModes[dominantAgent] === 'disco';
+      
       const openerMessage: Message = {
         id: uuidv4(),
         conversationId: conv.id,
         role: openerResult.agent as Message['role'], // Dominant agent greeting
         content: openerResult.content,
         responseType: 'primary',
-        isDisco, // Mark message as disco if conversation is disco
+        isDisco: isDominantDisco, // Mark message as disco if agent is in disco mode
         timestamp: new Date(),
       };
       addMessage(openerMessage);
@@ -814,32 +821,59 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         onAction={governorNotification?.onAction}
       />
       
-      {/* Disco Mode tooltip - rendered via portal to bypass overflow:hidden on app-container */}
-      {showDiscoTooltip && createPortal(
+      {/* Disco info tooltip - rendered via portal to bypass overflow:hidden on app-container */}
+      {showDiscoInfoTooltip && createPortal(
         <div 
           className="fixed z-[9999]"
           style={{ 
-            left: discoTooltipPos.x, 
-            top: discoTooltipPos.y,
+            left: discoInfoTooltipPos.x, 
+            top: discoInfoTooltipPos.y,
             transform: 'translateX(-50%)'
           }}
-          onMouseEnter={cancelHideDiscoTooltip}
-          onMouseLeave={hideDiscoTooltipWithDelay}
+          onMouseEnter={cancelHideDiscoInfoTooltip}
+          onMouseLeave={hideDiscoInfoTooltipWithDelay}
         >
           {/* Invisible bridge to connect button to tooltip */}
           <div className="h-2 w-full" />
           <div 
-            className="w-[220px] px-3 py-2.5 bg-obsidian border border-amber-500/40 rounded-lg shadow-xl"
+            className="w-[200px] px-3 py-3 bg-obsidian/95 backdrop-blur-sm border border-amber-500/50 rounded-xl shadow-2xl"
+            style={{ boxShadow: '0 0 20px rgba(234, 179, 8, 0.15)' }}
           >
-            <h4 className="text-xs font-sans font-medium text-amber-400 mb-1">Disco Mode</h4>
-            <p className="text-[10px] text-ash/70 font-mono leading-relaxed">
-              Agents become intense, opinionated, and challenging. Use when you want to be pushed, not helped.
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" strokeWidth={2} />
+              <h4 className="text-xs font-sans font-semibold text-amber-400">Disco Mode</h4>
+            </div>
+            
+            {/* Tips as separate cards */}
+            <div className="space-y-2">
+              <div className="px-2 py-1.5 bg-smoke/20 rounded-lg border border-smoke/20">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                  <span className="text-ash/50">Click:</span>
+                  <span className="text-emerald-400">On</span>
+                  <span className="text-ash/30">→</span>
+                  <span className="text-amber-400">Disco</span>
+                  <span className="text-ash/30">→</span>
+                  <span className="text-ash/40">Off</span>
+                </div>
+              </div>
+              <div className="px-2 py-1.5 bg-smoke/20 rounded-lg border border-smoke/20 flex items-center gap-2">
+                <kbd className="px-1.5 py-0.5 bg-amber-500/20 rounded text-amber-400 text-[9px] border border-amber-500/30 font-mono">⌘D</kbd>
+                <span className="text-[10px] text-ash/50 font-mono">toggles all</span>
+              </div>
+            </div>
+            
+            {/* Description */}
+            <p className="mt-3 text-[10px] text-ash/50 font-mono leading-relaxed">
+              Intense, opinionated, challenging.
             </p>
+            
+            {/* Link */}
             <a 
               href="https://discoelysium.com" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="flex items-center gap-1 mt-2 pt-2 border-t border-smoke/30 text-[9px] text-ash/50 hover:text-amber-400 transition-colors font-mono"
+              className="flex items-center gap-1.5 mt-2 pt-2 border-t border-smoke/20 text-[9px] text-ash/40 hover:text-amber-400 transition-colors font-mono"
             >
               <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
@@ -894,49 +928,23 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             </button>
           </div>
 
-          {/* New conversation buttons - in a pill container */}
-          <div className="flex items-center bg-charcoal/60 rounded-full px-1.5 py-1 border border-smoke/30">
-            {/* Normal conversation */}
-            <button
-              onClick={() => handleNewConversation(false)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all cursor-pointer ${
-                !isDiscoConversation()
-                  ? 'text-pearl bg-smoke/30'
-                  : 'text-ash/60 hover:text-ash hover:bg-smoke/20'
-              }`}
-              title="New conversation (⌘N)"
-            >
-              <MessageSquare className="w-4 h-4" strokeWidth={1.5} />
-              <kbd className="text-[8px] font-mono text-ash/40">⌘N</kbd>
-            </button>
-            
-            {/* Disco conversation */}
-            <div className="relative">
-              <button
-                ref={discoButtonRef}
-                onClick={() => handleNewConversation(true)}
-                onMouseEnter={showDiscoTooltipWithDelay}
-                onMouseLeave={hideDiscoTooltipWithDelay}
-                className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all cursor-pointer ${
-                  isDiscoConversation()
-                    ? 'bg-amber-500/20 text-amber-400'
-                    : 'text-ash/60 hover:text-ash hover:bg-smoke/20'
-                }`}
-                title="New Disco conversation (⌘D)"
-              >
-                <BotMessageSquare className="w-4 h-4" strokeWidth={1.5} />
-                <kbd className="text-[8px] font-mono text-ash/40">⌘D</kbd>
-              </button>
-            </div>
-          </div>
+          {/* New conversation button */}
+          <button
+            onClick={() => handleNewConversation()}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-ash/60 hover:text-pearl hover:bg-smoke/20 transition-all cursor-pointer"
+            title="New conversation (⌘N)"
+          >
+            <BotMessageSquare className="w-4 h-4" strokeWidth={1.5} />
+            <kbd className="text-[8px] font-mono text-ash/40">⌘N</kbd>
+          </button>
           
           {/* Agent toggles - in a pill container */}
           <div className="flex items-center gap-1.5 bg-charcoal/60 rounded-full px-2 py-1.5 border border-smoke/30">
             {AGENT_ORDER.map((agentId, index) => {
-              // Use disco agents config if in disco conversation
-              const isDisco = isDiscoConversation();
-              const agentConfig = isDisco ? DISCO_AGENTS[agentId] : AGENTS[agentId];
+              // Use disco agents config if agent is in disco mode
               const mode = agentModes[agentId];
+              const isAgentInDisco = mode === 'disco';
+              const agentConfig = isAgentInDisco ? DISCO_AGENTS[agentId] : AGENTS[agentId];
               const isActive = mode !== 'off';
               const hotkeyNum = index + 1;
               
@@ -951,8 +959,19 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
                     } cursor-pointer`}
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
-                    title={`Toggle ${agentConfig.name} (⌘${hotkeyNum})`}
+                    title={`Toggle ${agentConfig.name}: ${mode} (⌘${hotkeyNum})`}
                   >
+                    {/* Disco mode glow ring */}
+                    {isAgentInDisco && (
+                      <motion.div
+                        className="absolute inset-[-2px] rounded-full"
+                        style={{ 
+                          border: '1.5px solid #EAB308',
+                        }}
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                      />
+                    )}
                     <div className="w-full h-full rounded-full overflow-hidden">
                       <img 
                         src={agentConfig.avatar} 
@@ -964,7 +983,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
                     {isActive && (
                       <motion.div
                         className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-charcoal z-10"
-                        style={{ backgroundColor: isDisco ? '#EAB308' : '#22C55E' }}
+                        style={{ backgroundColor: isAgentInDisco ? '#EAB308' : '#22C55E' }}
                         animate={{ opacity: [0.7, 1, 0.7] }}
                         transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                       />
@@ -987,12 +1006,14 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
                       <span className="text-[9px] text-ash/50 font-mono uppercase">{agentId}</span>
                       <span 
                         className={`text-[8px] px-1.5 py-0.5 rounded-full font-mono uppercase ${
-                          isActive 
-                            ? 'bg-emerald-500/20 text-emerald-400'
-                            : 'bg-smoke/30 text-ash/50'
+                          isAgentInDisco 
+                            ? 'bg-amber-500/20 text-amber-400'
+                            : isActive 
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-smoke/30 text-ash/50'
                         }`}
                       >
-                        {isActive ? 'On' : 'Off'}
+                        {isAgentInDisco ? 'Disco' : isActive ? 'On' : 'Off'}
                       </span>
                     </div>
                     <p className="text-[10px] text-ash/80 font-mono leading-relaxed">
@@ -1002,6 +1023,24 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
                 </div>
               );
             })}
+            
+            {/* Go Disco! button - enticing pill to discover disco mode */}
+            <motion.button
+              ref={discoInfoButtonRef}
+              onMouseEnter={showDiscoInfoTooltipWithDelay}
+              onMouseLeave={hideDiscoInfoTooltipWithDelay}
+              onClick={() => toggleAllDisco()}
+              className="ml-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-400 hover:from-amber-500/30 hover:to-orange-500/30 hover:border-amber-400/60 transition-all cursor-pointer group"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              animate={{ 
+                boxShadow: ['0 0 0px rgba(234, 179, 8, 0)', '0 0 8px rgba(234, 179, 8, 0.3)', '0 0 0px rgba(234, 179, 8, 0)']
+              }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <Sparkles className="w-3 h-3 group-hover:animate-pulse" strokeWidth={2} />
+              <span className="text-[9px] font-mono font-medium tracking-wide">DISCO</span>
+            </motion.button>
           </div>
           
         </div>
@@ -1014,7 +1053,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           <h1 className="font-logo text-base font-bold tracking-wide leading-none pointer-events-none text-white">
             Intersect
           </h1>
-          <span className="px-1 py-0.5 bg-smoke/40 border border-smoke/50 rounded text-[10px] font-mono text-ash/70 pointer-events-none leading-none">v0</span>
+          <span className="px-1 py-0.5 bg-smoke/40 border border-smoke/50 rounded text-[10px] font-mono text-ash/70 pointer-events-none leading-none">v1</span>
         </div>
 
         {/* Right controls */}
@@ -1087,7 +1126,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
         {/* Thinking indicator */}
         <AnimatePresence>
           {isLoading && (
-            <ThinkingIndicator agent={thinkingAgent} phase={thinkingPhase} isDisco={isDiscoConversation()} />
+            <ThinkingIndicator agent={thinkingAgent} phase={thinkingPhase} isDisco={hasAnyDiscoAgent()} />
           )}
         </AnimatePresence>
 
