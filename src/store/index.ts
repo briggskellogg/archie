@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Message, UserProfile, PersonaProfile, Conversation, AgentType, AgentMode, DebateMode } from '../types';
 
-export type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark' | 'system';
 
 interface AgentModeState {
   instinct: AgentMode;
@@ -244,12 +244,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   isFloatingMode: false,
   setFloatingMode: (isFloatingMode) => set({ isFloatingMode }),
   
-  // Theme (light/dark mode) - persisted to localStorage
+  // Theme (light/dark/system mode) - persisted to localStorage
   theme: (() => {
     try {
-      return (localStorage.getItem('intersect-theme') as Theme) || 'dark';
+      return (localStorage.getItem('intersect-theme') as Theme) || 'system';
     } catch {
-      return 'dark';
+      return 'system';
     }
   })(),
   setTheme: (theme) => {

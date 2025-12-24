@@ -404,11 +404,12 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             e.preventDefault();
             toggleTranscription(); // Toggle voice transcription
             break;
-          case 't':
+          case 'a':
             e.preventDefault();
-            // Toggle theme (light/dark mode)
+            // Toggle theme (system -> light -> dark -> system)
             const currentTheme = useAppStore.getState().theme;
-            useAppStore.getState().setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+            const nextTheme = currentTheme === 'system' ? 'light' : currentTheme === 'light' ? 'dark' : 'system';
+            useAppStore.getState().setTheme(nextTheme);
             break;
           case '1':
             // Skip if Settings is open - let Settings handle profile switching

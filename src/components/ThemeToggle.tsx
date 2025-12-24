@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Monitor } from 'lucide-react';
 import { useAppStore, Theme } from '../store';
 
 export function ThemeToggle() {
@@ -9,30 +9,63 @@ export function ThemeToggle() {
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
-    root.classList.add(theme);
+
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(theme);
+    }
   }, [theme]);
 
+  // Listen for system theme changes when in system mode
+  useEffect(() => {
+    if (theme !== 'system') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      const root = window.document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add(e.matches ? 'dark' : 'light');
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
+
+  // Cycle through: system -> light -> dark -> system
   const toggleTheme = () => {
-    const newTheme: Theme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
+    const nextTheme: Theme = theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system';
+    setTheme(nextTheme);
   };
 
-  const isDark = theme === 'dark';
+  const getIcon = () => {
+    if (theme === 'system') {
+      return <Monitor className="w-4 h-4 text-ash/70 group-hover:text-aurora transition-colors" strokeWidth={1.5} />;
+    } else if (theme === 'dark') {
+      return <Moon className="w-4 h-4 text-ash/70 group-hover:text-indigo-400 transition-colors" strokeWidth={1.5} />;
+    } else {
+      return <Sun className="w-4 h-4 text-slate-600 group-hover:text-amber-400 transition-colors" strokeWidth={1.5} />;
+    }
+  };
+
+  const getTitle = () => {
+    if (theme === 'system') return 'System Theme (⌘A) → Light';
+    if (theme === 'light') return 'Light Mode (⌘A) → Dark';
+    return 'Dark Mode (⌘A) → System';
+  };
 
   return (
     <button
       onClick={toggleTheme}
-      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-smoke/20 dark:hover:bg-smoke/20 light:hover:bg-gray-200/50 transition-all cursor-pointer group"
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={isDark ? 'Light Mode (⌘T)' : 'Dark Mode (⌘T)'}
+      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-smoke/20 transition-all cursor-pointer group"
+      aria-label={getTitle()}
+      title={getTitle()}
     >
-      {isDark ? (
-        <Sun className="w-4 h-4 text-ash/70 group-hover:text-amber-400 transition-colors" strokeWidth={1.5} />
-      ) : (
-        <Moon className="w-4 h-4 text-slate-600 group-hover:text-indigo-500 transition-colors" strokeWidth={1.5} />
-      )}
-      <kbd className="p-1 bg-smoke/30 dark:bg-smoke/30 rounded text-[10px] font-mono text-ash/60 dark:text-ash/60 border border-smoke/40 dark:border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘T</kbd>
+      {getIcon()}
+      <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘A</kbd>
     </button>
   );
 }
-
