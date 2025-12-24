@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { Message, UserProfile, PersonaProfile, Conversation, AgentType, AgentMode, DebateMode } from '../types';
 
+export type Theme = 'light' | 'dark';
+
 interface AgentModeState {
   instinct: AgentMode;
   logic: AgentMode;
@@ -70,6 +72,10 @@ interface AppState {
   // Floating mode
   isFloatingMode: boolean;
   setFloatingMode: (floating: boolean) => void;
+  
+  // Theme (light/dark mode)
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
   
   // ElevenLabs API key (for voice transcription)
   elevenLabsApiKey: string | null;
@@ -237,6 +243,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Floating mode
   isFloatingMode: false,
   setFloatingMode: (isFloatingMode) => set({ isFloatingMode }),
+  
+  // Theme (light/dark mode) - persisted to localStorage
+  theme: (() => {
+    try {
+      return (localStorage.getItem('intersect-theme') as Theme) || 'dark';
+    } catch {
+      return 'dark';
+    }
+  })(),
+  setTheme: (theme) => {
+    try {
+      localStorage.setItem('intersect-theme', theme);
+    } catch (e) {
+      console.error('Failed to persist theme:', e);
+    }
+    set({ theme });
+  },
   
   // ElevenLabs API key (for voice transcription) - persisted to localStorage
   elevenLabsApiKey: (() => {

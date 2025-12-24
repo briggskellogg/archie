@@ -7,6 +7,7 @@ import { BotMessageSquare, ShieldCheck, X, Minus, Square, Mic, Sparkles } from '
 import { MessageBubble } from './MessageBubble';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { ProfileSwitcher } from './ProfileSwitcher';
+import { ThemeToggle } from './ThemeToggle';
 import { useAppStore } from '../store';
 import { Message, AgentType, DebateMode } from '../types';
 import { AGENTS, DISCO_AGENTS, AGENT_ORDER, USER_PROFILES } from '../constants/agents';
@@ -402,6 +403,12 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           case 's':
             e.preventDefault();
             toggleTranscription(); // Toggle voice transcription
+            break;
+          case 't':
+            e.preventDefault();
+            // Toggle theme (light/dark mode)
+            const currentTheme = useAppStore.getState().theme;
+            useAppStore.getState().setTheme(currentTheme === 'dark' ? 'light' : 'dark');
             break;
           case '1':
             // Skip if Settings is open - let Settings handle profile switching
@@ -887,7 +894,7 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       
       {/* Header - Clean, centered logo with space for macOS window controls */}
       <header 
-        className="flex items-center justify-between px-4 py-2 border-b border-smoke/30 bg-obsidian/80 backdrop-blur-md cursor-default"
+        className="relative flex items-center justify-between px-4 py-2 border-b border-smoke/30 bg-obsidian/80 backdrop-blur-md cursor-default"
         onMouseDown={async (e) => {
           const isButton = (e.target as HTMLElement).closest('button');
           if (isButton) return;
@@ -1045,15 +1052,15 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
           
         </div>
         
-        {/* Centered logo */}
+        {/* Absolutely centered logo */}
         <div 
-          className="flex items-center gap-2 select-none"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 select-none pointer-events-none"
           data-tauri-drag-region
         >
-          <h1 className="font-logo text-base font-bold tracking-wide leading-none pointer-events-none text-white">
+          <h1 className="font-logo text-base font-bold tracking-wide leading-none text-pearl">
             Intersect
           </h1>
-          <span className="px-1 py-0.5 bg-smoke/40 border border-smoke/50 rounded text-[10px] font-mono text-ash/70 pointer-events-none leading-none">v1</span>
+          <span className="px-1 py-0.5 bg-smoke/40 border border-smoke/50 rounded text-[10px] font-mono text-ash/70 leading-none">v1</span>
         </div>
 
         {/* Right controls */}
@@ -1092,6 +1099,9 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
             </div>
             <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘G</kbd>
           </button>
+          
+          {/* Theme toggle */}
+          <ThemeToggle />
           
         </div>
       </header>

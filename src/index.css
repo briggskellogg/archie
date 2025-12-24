@@ -70,7 +70,7 @@
   --font-mono: 'PP Neue Montreal Mono', 'JetBrains Mono', monospace;
   --font-agent: 'PP NeueBit', 'PP Neue Montreal Mono', monospace;
   
-  /* Dark palette - Apple-inspired luxury */
+  /* Dark palette - Apple-inspired luxury (default) */
   --color-void: #0C0C0E;
   --color-obsidian: #121214;
   --color-charcoal: #1C1C1F;
@@ -107,6 +107,34 @@
   --color-aurora: #6BB8C9;
 }
 
+/* Light theme overrides */
+html.light {
+  --color-void: #FAFAFA;
+  --color-obsidian: #FFFFFF;
+  --color-charcoal: #F5F5F5;
+  --color-slate: #EEEEEE;
+  --color-smoke: #E0E0E0;
+  --color-ash: #9E9E9E;
+  --color-silver: #757575;
+  --color-pearl: #424242;
+  --color-ivory: #212121;
+  
+  /* Golden accent - slightly darker for light mode */
+  --color-gold: #B8960D;
+  --color-gold-soft: #B8960D15;
+  --color-gold-glow: #B8960D30;
+  
+  /* Agent colors - keep vibrant but adjust soft/glow for light bg */
+  --color-instinct-soft: #E07A5F15;
+  --color-instinct-glow: #E07A5F30;
+  
+  --color-logic-soft: #6BB8C915;
+  --color-logic-glow: #6BB8C930;
+  
+  --color-psyche-soft: #A78BCA15;
+  --color-psyche-glow: #A78BCA30;
+}
+
 /* Base styles - transparent for rounded corners */
 html, body, #root {
   height: 100%;
@@ -129,6 +157,19 @@ body {
   background: var(--color-void);
   border-radius: 12px;
   overflow: hidden;
+}
+
+/* Light mode specific styles */
+html.light .app-container {
+  border: 1px solid var(--color-smoke);
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: var(--color-ash);
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-silver);
 }
 
 /* Logo font */
