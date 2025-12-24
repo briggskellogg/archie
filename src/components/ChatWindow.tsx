@@ -76,6 +76,32 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
   const [showDiscoTooltip, setShowDiscoTooltip] = useState(false);
   const [discoTooltipPos, setDiscoTooltipPos] = useState({ x: 0, y: 0 });
   const discoButtonRef = useRef<HTMLButtonElement>(null);
+  const discoTooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const showDiscoTooltipWithDelay = () => {
+    if (discoTooltipTimeoutRef.current) {
+      clearTimeout(discoTooltipTimeoutRef.current);
+      discoTooltipTimeoutRef.current = null;
+    }
+    if (discoButtonRef.current) {
+      const rect = discoButtonRef.current.getBoundingClientRect();
+      setDiscoTooltipPos({ x: rect.left + rect.width / 2, y: rect.bottom });
+      setShowDiscoTooltip(true);
+    }
+  };
+  
+  const hideDiscoTooltipWithDelay = () => {
+    discoTooltipTimeoutRef.current = setTimeout(() => {
+      setShowDiscoTooltip(false);
+    }, 150); // Small delay to allow moving to tooltip
+  };
+  
+  const cancelHideDiscoTooltip = () => {
+    if (discoTooltipTimeoutRef.current) {
+      clearTimeout(discoTooltipTimeoutRef.current);
+      discoTooltipTimeoutRef.current = null;
+    }
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasInitialized = useRef(false);
@@ -791,17 +817,19 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
       {/* Disco Mode tooltip - rendered via portal to bypass overflow:hidden on app-container */}
       {showDiscoTooltip && createPortal(
         <div 
-          className="fixed z-[9999] pointer-events-none"
+          className="fixed z-[9999]"
           style={{ 
             left: discoTooltipPos.x, 
-            top: discoTooltipPos.y + 8,
+            top: discoTooltipPos.y,
             transform: 'translateX(-50%)'
           }}
+          onMouseEnter={cancelHideDiscoTooltip}
+          onMouseLeave={hideDiscoTooltipWithDelay}
         >
+          {/* Invisible bridge to connect button to tooltip */}
+          <div className="h-2 w-full" />
           <div 
-            className="w-[220px] px-3 py-2.5 bg-obsidian border border-amber-500/40 rounded-lg shadow-xl pointer-events-auto"
-            onMouseEnter={() => setShowDiscoTooltip(true)}
-            onMouseLeave={() => setShowDiscoTooltip(false)}
+            className="w-[220px] px-3 py-2.5 bg-obsidian border border-amber-500/40 rounded-lg shadow-xl"
           >
             <h4 className="text-xs font-sans font-medium text-amber-400 mb-1">Disco Mode</h4>
             <p className="text-[10px] text-ash/70 font-mono leading-relaxed">
@@ -887,14 +915,8 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
               <button
                 ref={discoButtonRef}
                 onClick={() => handleNewConversation(true)}
-                onMouseEnter={() => {
-                  if (discoButtonRef.current) {
-                    const rect = discoButtonRef.current.getBoundingClientRect();
-                    setDiscoTooltipPos({ x: rect.left + rect.width / 2, y: rect.bottom });
-                    setShowDiscoTooltip(true);
-                  }
-                }}
-                onMouseLeave={() => setShowDiscoTooltip(false)}
+                onMouseEnter={showDiscoTooltipWithDelay}
+                onMouseLeave={hideDiscoTooltipWithDelay}
                 className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all cursor-pointer ${
                   isDiscoConversation()
                     ? 'bg-amber-500/20 text-amber-400'
@@ -1243,4 +1265,3 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     </div>
   );
 }
-
