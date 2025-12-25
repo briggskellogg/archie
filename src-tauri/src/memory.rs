@@ -95,8 +95,10 @@ impl MemoryExtractor {
         existing_facts: &[UserFact],
         conversation_id: &str,
     ) -> Result<ExtractionResult, Box<dyn Error + Send + Sync>> {
+        // Truncate safely at char boundary
+        let preview: String = user_message.chars().take(100).collect();
         logging::log_memory(Some(conversation_id), &format!(
-            "Starting extraction. User message: {}", &user_message[..user_message.len().min(100)]
+            "Starting extraction. User message: {}", preview
         ));
         // Build context of existing facts for the LLM
         let existing_facts_context = if existing_facts.is_empty() {
@@ -188,8 +190,10 @@ Respond with ONLY valid JSON in this exact format:
         let result: ExtractionResult = match serde_json::from_str(cleaned) {
             Ok(r) => r,
             Err(e) => {
+                // Truncate safely at char boundary
+                let preview: String = cleaned.chars().take(200).collect();
                 logging::log_error(Some(conversation_id), &format!(
-                    "Failed to parse extraction JSON: {}. Response: {}", e, &cleaned[..cleaned.len().min(200)]
+                    "Failed to parse extraction JSON: {}. Response: {}", e, preview
                 ));
                 ExtractionResult {
                     new_facts: Vec::new(),

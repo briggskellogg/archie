@@ -63,6 +63,7 @@ export interface ThoughtResult {
   name: string;       // Display name: "Snap", "Swarm", etc.
   content: string;    // The thought content
   is_disco: boolean;  // Whether disco mode was used
+  round?: number;     // Which round of thought (0 = initial, 1+ = debate rounds)
 }
 
 // Send message result v2 (Governor synthesis)

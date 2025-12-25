@@ -164,8 +164,8 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
           )}
           
           <div 
-            className="leading-snug text-[13px] font-mono prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-1.5 prose-strong:font-semibold prose-code:bg-smoke/30 prose-code:px-1 prose-code:rounded prose-code:text-[12px]"
-            style={!isUser && agent ? { color: `${agent.color}dd` } : undefined}
+            className="leading-snug text-[13px] font-mono prose dark:prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-1.5 prose-strong:font-semibold prose-code:bg-smoke/30 prose-code:px-1 prose-code:rounded prose-code:text-[12px]"
+            style={!isUser && agent ? { color: `${agent.color}` } : undefined}
           >
             {isTyping ? (
               <>
@@ -185,7 +185,7 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
       </div>
       
       {/* Timestamp - below bubble, aligned with bubble edge */}
-      <div className={`text-[9px] text-ash/30 mt-0.5 font-mono ${isUser ? 'mr-10' : 'ml-10'}`}>
+      <div className={`text-[9px] text-ash/50 mt-0.5 font-mono ${isUser ? 'mr-10' : 'ml-10'}`}>
         {message.timestamp.toLocaleTimeString([], { 
           hour: '2-digit', 
           minute: '2-digit' 

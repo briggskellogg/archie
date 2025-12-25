@@ -109,30 +109,36 @@
 
 /* Light theme overrides */
 html.light {
-  --color-void: #F8F9FA;
+  /* Background colors - cream/warm white for easier reading */
+  --color-void: #FAF8F5;
   --color-obsidian: #FFFFFF;
-  --color-charcoal: #F1F3F4;
-  --color-slate: #E8EAED;
-  --color-smoke: #DADCE0;
-  --color-ash: #5F6368;
-  --color-silver: #3C4043;
-  --color-pearl: #202124;
-  --color-ivory: #000000;
+  --color-charcoal: #F5F3F0;
+  --color-slate: #EBE8E4;
+  --color-smoke: #D5D0C9;
   
-  /* Golden accent - richer for light mode */
-  --color-gold: #A67C00;
-  --color-gold-soft: #A67C0018;
-  --color-gold-glow: #A67C0035;
+  /* Text colors - much darker for strong contrast */
+  --color-ash: #4A4540;
+  --color-silver: #2D2A26;
+  --color-pearl: #1A1816;
+  --color-ivory: #0D0C0B;
   
-  /* Agent colors - keep vibrant but adjust soft/glow for light bg */
-  --color-instinct-soft: #E07A5F18;
-  --color-instinct-glow: #E07A5F35;
+  /* Golden accent - rich and visible on light */
+  --color-gold: #8B6914;
+  --color-gold-soft: #8B691420;
+  --color-gold-glow: #8B691440;
   
-  --color-logic-soft: #6BB8C918;
-  --color-logic-glow: #6BB8C935;
+  /* Agent colors - slightly deeper for light mode visibility */
+  --color-instinct: #C9634A;
+  --color-instinct-soft: #C9634A20;
+  --color-instinct-glow: #C9634A40;
   
-  --color-psyche-soft: #A78BCA18;
-  --color-psyche-glow: #A78BCA35;
+  --color-logic: #4A9BAD;
+  --color-logic-soft: #4A9BAD20;
+  --color-logic-glow: #4A9BAD40;
+  
+  --color-psyche: #8A6CB0;
+  --color-psyche-soft: #8A6CB020;
+  --color-psyche-glow: #8A6CB040;
 }
 
 /* Base styles - transparent for rounded corners */
@@ -165,12 +171,90 @@ html.light .app-container {
 }
 
 html.light ::-webkit-scrollbar-thumb {
-  background: var(--color-ash);
+  background: var(--color-smoke);
 }
 
 html.light ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-silver);
+  background: var(--color-ash);
 }
+
+/* Light mode text improvements */
+html.light .text-pearl {
+  color: var(--color-pearl) !important;
+}
+
+html.light .text-ash {
+  color: var(--color-ash) !important;
+}
+
+html.light .text-silver {
+  color: var(--color-silver) !important;
+}
+
+/* Light mode message bubbles - stronger contrast */
+html.light .font-mono {
+  color: var(--color-silver);
+}
+
+/* Light mode borders - more visible */
+html.light .border-smoke {
+  border-color: var(--color-smoke) !important;
+}
+
+/* Light mode header - slight shadow for definition */
+html.light header {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Light mode input - visible border */
+html.light textarea,
+html.light input {
+  border-color: var(--color-smoke) !important;
+  background: var(--color-obsidian) !important;
+}
+
+html.light textarea:focus,
+html.light input:focus {
+  border-color: var(--color-ash) !important;
+}
+
+/* Light mode modals - subtle shadow */
+html.light .bg-obsidian {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* Light mode agent name tags - ensure readability */
+html.light .text-\[\#E07A5F\] { color: #C9634A !important; }
+html.light .text-\[\#6BB8C9\] { color: #4A9BAD !important; }
+html.light .text-\[\#A78BCA\] { color: #8A6CB0 !important; }
+
+/* Light mode prose - readable text */
+html.light .prose {
+  --tw-prose-body: var(--color-silver);
+  --tw-prose-headings: var(--color-pearl);
+  --tw-prose-links: var(--color-pearl);
+  --tw-prose-bold: var(--color-pearl);
+  --tw-prose-code: var(--color-silver);
+  color: var(--color-silver);
+}
+
+/* Ensure prose doesn't invert in light mode */
+html.light .prose-invert {
+  --tw-prose-body: var(--color-silver);
+  --tw-prose-headings: var(--color-pearl);
+  color: var(--color-silver);
+}
+
+/* Light mode - boost low opacity text for readability */
+html.light .text-ash\/30 { color: color-mix(in srgb, var(--color-ash) 55%, transparent) !important; }
+html.light .text-ash\/40 { color: color-mix(in srgb, var(--color-ash) 65%, transparent) !important; }
+html.light .text-ash\/50 { color: color-mix(in srgb, var(--color-ash) 75%, transparent) !important; }
+html.light .text-ash\/60 { color: color-mix(in srgb, var(--color-ash) 85%, transparent) !important; }
+
+/* Light mode - boost border visibility */
+html.light .border-smoke\/20 { border-color: color-mix(in srgb, var(--color-smoke) 50%, transparent) !important; }
+html.light .border-smoke\/30 { border-color: color-mix(in srgb, var(--color-smoke) 65%, transparent) !important; }
+html.light .border-smoke\/40 { border-color: color-mix(in srgb, var(--color-smoke) 80%, transparent) !important; }
 
 /* Logo font */
 .font-logo {

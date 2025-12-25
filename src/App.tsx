@@ -4,7 +4,6 @@ import { useAppStore } from './store';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { ChatWindow } from './components/ChatWindow';
 import { GovernorModal } from './components/GovernorModal';
-import { ReportModal } from './components/ReportModal';
 import { initApp, getUserProfile, InitResult } from './hooks/useTauri';
 import { AGENTS } from './constants/agents';
 
@@ -17,15 +16,7 @@ function App() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [needsApiKey, setNeedsApiKey] = useState(false);
-  const [isReportOpen, setReportOpen] = useState(false);
-  const [showApiModalFromReport, setShowApiModalFromReport] = useState(false);
   const [recoveryNeeded, setRecoveryNeeded] = useState<InitResult | null>(null);
-
-  // Open report modal (closes settings first)
-  const handleOpenReport = () => {
-    setSettingsOpen(false);
-    setReportOpen(true);
-  };
 
   // Initialize app
   useEffect(() => {
@@ -115,7 +106,6 @@ function App() {
       {/* Chat window is always visible */}
       <ChatWindow 
         onOpenSettings={() => setSettingsOpen(true)} 
-        onOpenReport={handleOpenReport}
         recoveryNeeded={recoveryNeeded}
         onRecoveryComplete={() => setRecoveryNeeded(null)}
       />
@@ -126,24 +116,10 @@ function App() {
         onComplete={handleApiKeyComplete} 
       />
 
+      {/* Unified Governor Modal (profile, star chart, observations, API keys) */}
       <GovernorModal
         isOpen={isSettingsOpen}
         onClose={() => setSettingsOpen(false)}
-      />
-
-      <ReportModal
-        isOpen={isReportOpen}
-        onClose={() => setReportOpen(false)}
-        onOpenApiModal={() => setShowApiModalFromReport(true)}
-      />
-
-      {/* API Key modal from Report */}
-      <ApiKeyModal 
-        isOpen={showApiModalFromReport} 
-        onComplete={() => {
-          setShowApiModalFromReport(false);
-          handleApiKeyComplete();
-        }}
       />
     </div>
   );

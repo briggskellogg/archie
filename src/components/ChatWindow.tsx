@@ -27,12 +27,11 @@ import { GovernorNotification } from './GovernorNotification';
 
 interface ChatWindowProps {
   onOpenSettings: () => void;
-  onOpenReport: () => void;
   recoveryNeeded?: InitResult | null;
   onRecoveryComplete?: () => void;
 }
 
-export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRecoveryComplete }: ChatWindowProps) {
+export function ChatWindow({ onOpenSettings, recoveryNeeded, onRecoveryComplete }: ChatWindowProps) {
   const {
     messages,
     addMessage,
@@ -354,12 +353,9 @@ const { elevenLabsApiKey, isSettingsOpen, useGovernorMode } = useAppStore();
             toggleAllDisco(); // Toggle all agents to/from disco mode
             break;
           case 'p':
-            e.preventDefault();
-            onOpenSettings(); // Open Profile modal
-            break;
           case 'g':
             e.preventDefault();
-            onOpenReport(); // Open The Governor (report)
+            onOpenSettings(); // Open unified Governor modal
             break;
           case 's':
             e.preventDefault();
@@ -402,7 +398,7 @@ const { elevenLabsApiKey, isSettingsOpen, useGovernorMode } = useAppStore();
     
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [onOpenReport, toggleAgentMode, toggleAllAgents, toggleTranscription, isTranscribing, stopTranscription, isSettingsOpen]);
+  }, [onOpenSettings, toggleAgentMode, toggleAllAgents, toggleTranscription, isTranscribing, stopTranscription, isSettingsOpen]);
 
   // Handle send message
   const handleSend = async () => {
@@ -866,66 +862,82 @@ const { elevenLabsApiKey, isSettingsOpen, useGovernorMode } = useAppStore();
             <kbd className="text-[8px] font-mono text-ash/40">⌘N</kbd>
           </button>
           
-          {/* Agent avatars with hover tooltips */}
-          <div className="flex items-center gap-1 bg-charcoal/50 rounded-full px-2 py-1.5 border border-smoke/30">
-            {AGENT_ORDER.map((agentId) => {
-              const mode = agentModes[agentId];
-              const isAgentInDisco = mode === 'disco';
-              const agentConfig = isAgentInDisco ? DISCO_AGENTS[agentId] : AGENTS[agentId];
-              const isActive = mode !== 'off';
-              
-              return (
-                <div key={agentId} className="relative group/agent">
-                  <motion.div
-                    layout
-                    animate={{ 
-                      scale: isActive ? 1 : 0.9,
-                      opacity: isActive ? 1 : 0.4,
-                      filter: isActive ? 'grayscale(0%)' : 'grayscale(100%)',
-                    }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                    className={`relative w-6 h-6 rounded-full overflow-hidden cursor-default ${
-                      isAgentInDisco ? 'ring-1.5 ring-amber-500' : ''
-                    }`}
-                  >
-                    {/* Crossfade between normal and disco avatars */}
-                    <AnimatePresence mode="wait">
-                      <motion.img
-                        key={`${agentId}-${isAgentInDisco ? 'disco' : 'normal'}`}
-                        src={agentConfig.avatar}
-                        alt={agentConfig.name}
-                        className="w-full h-full object-cover absolute inset-0"
-                        initial={{ opacity: 0, scale: 1.1 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        transition={{ duration: 0.3 }}
-                      />
-                    </AnimatePresence>
-                  </motion.div>
+          {/* Agent Pill - All agents in one pill */}
+          {(() => {
+            const isDisco = hasAnyDiscoAgent();
+            return (
+              <div className={`flex items-center gap-0.5 px-1.5 py-1 rounded-full border transition-all ${
+                isDisco 
+                  ? 'bg-amber-950/30 border-amber-600/40' 
+                  : 'bg-charcoal/50 border-smoke/30'
+              }`}>
+                {AGENT_ORDER.map((agentId, idx) => {
+                  const mode = agentModes[agentId];
+                  const isAgentInDisco = mode === 'disco';
+                  const agentConfig = isAgentInDisco ? DISCO_AGENTS[agentId] : AGENTS[agentId];
+                  const isActive = mode !== 'off';
+                  const shortcutNum = idx + 1;
                   
-                  {/* Hover tooltip */}
-                  <div 
-                    className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-obsidian/95 border rounded-lg opacity-0 invisible group-hover/agent:opacity-100 group-hover/agent:visible transition-all shadow-xl w-[200px] z-50 pointer-events-none"
-                    style={{ borderColor: `${agentConfig.color}40` }}
-                  >
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span 
-                        className="text-xs font-sans font-medium"
-                        style={{ color: agentConfig.color }}
+                  return (
+                    <div key={agentId} className="relative group/agent">
+                      <button
+                        onClick={() => toggleAgentMode(agentId)}
+                        className={`relative flex items-center gap-1 px-1.5 py-0.5 rounded-full transition-all ${
+                          isActive 
+                            ? 'hover:bg-white/10' 
+                            : 'opacity-35 hover:opacity-50'
+                        }`}
+                        title={`Toggle ${agentConfig.name} (⌘${shortcutNum})`}
                       >
-                        {agentConfig.name}
-                      </span>
-                      <span className="text-[9px] text-ash/50 font-mono uppercase">{agentId}</span>
+                        <motion.div
+                          animate={{ 
+                            scale: isActive ? 1 : 0.85,
+                            filter: isActive ? 'grayscale(0%)' : 'grayscale(100%)',
+                          }}
+                          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                          className="relative w-5 h-5 rounded-full overflow-hidden"
+                          style={{ border: `1.5px solid ${isActive ? agentConfig.color : '#444'}` }}
+                        >
+                          <AnimatePresence mode="wait">
+                            <motion.img
+                              key={`${agentId}-${isAgentInDisco ? 'disco' : 'normal'}`}
+                              src={agentConfig.avatar}
+                              alt={agentConfig.name}
+                              className="w-full h-full object-cover absolute inset-0"
+                              initial={{ opacity: 0, scale: 1.1 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{ duration: 0.3 }}
+                            />
+                          </AnimatePresence>
+                        </motion.div>
+                        <kbd className="text-[8px] font-mono text-ash/40">⌘{shortcutNum}</kbd>
+                      </button>
+                      
+                      {/* Hover tooltip */}
+                      <div 
+                        className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-obsidian/95 border rounded-lg opacity-0 invisible group-hover/agent:opacity-100 group-hover/agent:visible transition-all shadow-xl w-[200px] z-50 pointer-events-none"
+                        style={{ borderColor: `${agentConfig.color}40` }}
+                      >
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span 
+                            className="text-xs font-sans font-medium"
+                            style={{ color: agentConfig.color }}
+                          >
+                            {agentConfig.name}
+                          </span>
+                          <span className="text-[9px] text-ash/50 font-mono uppercase">{agentId}</span>
+                        </div>
+                        <p className="text-[10px] text-ash/80 font-mono leading-relaxed">
+                          {agentConfig.description}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-ash/80 font-mono leading-relaxed">
-                      {agentConfig.description}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
         
         {/* Absolutely centered logo */}
@@ -939,78 +951,132 @@ const { elevenLabsApiKey, isSettingsOpen, useGovernorMode } = useAppStore();
           <span className="px-1 py-0.5 bg-smoke/40 border border-smoke/50 rounded text-[10px] font-mono text-ash/70 leading-none">v2</span>
         </div>
 
-        {/* Right controls */}
-        <div className="flex items-center gap-2 justify-end relative z-10">
-          {/* Governor pill - click opens profile, shows disco indicator */}
+        {/* Right controls - Governor Pill */}
+        <div className="flex items-center gap-3 justify-end relative z-10">
           {(() => {
             const isDisco = hasAnyDiscoAgent();
             const hasApiKey = userProfile?.apiKey && userProfile?.anthropicKey;
             
             return (
-              <motion.button
-                onClick={onOpenSettings}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-full cursor-pointer transition-all ${
-                  isDisco 
-                    ? 'bg-gradient-to-r from-amber-500/15 to-orange-500/15 border border-amber-500/40' 
-                    : 'bg-charcoal/50 border border-smoke/30 hover:border-smoke/50'
-                }`}
-                animate={isDisco ? { 
-                  boxShadow: ['0 0 0px rgba(234, 179, 8, 0)', '0 0 12px rgba(234, 179, 8, 0.3)', '0 0 0px rgba(234, 179, 8, 0)']
-                } : undefined}
-                transition={isDisco ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : undefined}
-                title="Governor Profile (⌘P)"
-              >
-                {/* Governor icon */}
-                <div className="relative w-7 h-7 rounded-full overflow-visible">
-                  {/* Disco glow ring */}
-                  {isDisco && (
-                    <motion.div 
-                      className="absolute inset-[-2px] rounded-full"
-                      style={{ border: '1.5px solid #EAB308' }}
-                      animate={{ opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-                  )}
-                  {/* Normal border */}
-                  {!isDisco && (
-                    <div className="absolute inset-[-1px] rounded-full border border-ash/30" />
-                  )}
-                  {/* Icon */}
-                  <div className="w-7 h-7 rounded-full overflow-hidden relative z-10">
-                    <img src={governorIcon} alt="Governor" className="w-full h-full object-cover" />
-                  </div>
-                  {/* API connection dot - pulsing green when connected */}
+              <div className="relative">
+                {/* Ambient glow behind */}
+                {isDisco && (
                   <motion.div
-                    className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-charcoal z-20"
-                    style={{ backgroundColor: hasApiKey ? '#22C55E' : '#6B7280' }}
-                    animate={hasApiKey ? { opacity: [0.7, 1, 0.7] } : undefined}
-                    transition={hasApiKey ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : undefined}
+                    className="absolute inset-0 rounded-2xl blur-xl"
+                    style={{ background: 'radial-gradient(ellipse at center, rgba(251, 191, 36, 0.15) 0%, transparent 70%)' }}
+                    animate={{ opacity: [0.5, 0.8, 0.5], scale: [1, 1.05, 1] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                   />
-                </div>
+                )}
                 
-                {/* Disco indicator with ⌘D */}
-                <div 
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${
-                    isDisco 
-                      ? 'bg-amber-500/20 text-amber-400' 
-                      : 'bg-smoke/20 text-ash/40'
-                  }`}
+                {/* Main container */}
+                <motion.div
+                  className="relative flex items-center rounded-2xl backdrop-blur-md overflow-hidden"
+                  style={{
+                    background: isDisco 
+                      ? 'linear-gradient(135deg, rgba(120, 53, 15, 0.4) 0%, rgba(30, 30, 30, 0.6) 50%, rgba(45, 35, 20, 0.4) 100%)'
+                      : 'linear-gradient(135deg, rgba(40, 40, 40, 0.5) 0%, rgba(25, 25, 25, 0.6) 100%)',
+                    border: isDisco ? '1px solid rgba(251, 191, 36, 0.4)' : '1px solid rgba(100, 100, 100, 0.3)',
+                    boxShadow: isDisco 
+                      ? '0 4px 20px rgba(251, 191, 36, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
+                      : '0 2px 10px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.03)',
+                  }}
                 >
-                  <Sparkles className={`w-3 h-3 ${isDisco ? 'animate-pulse' : ''}`} strokeWidth={1.5} />
-                  <kbd className="text-[9px] font-mono">⌘D</kbd>
-                </div>
-              </motion.button>
+                  {/* Governor avatar section */}
+                  <button
+                    onClick={onOpenSettings}
+                    className="relative flex items-center gap-2 pl-1.5 pr-3 py-1.5 hover:bg-white/5 transition-all group"
+                    title="Governor Profile (⌘P)"
+                  >
+                    {/* Avatar with ring */}
+                    <div className="relative">
+                      <motion.div
+                        className="w-8 h-8 rounded-xl overflow-hidden"
+                        style={{
+                          border: isDisco ? '2px solid rgba(251, 191, 36, 0.6)' : '2px solid rgba(212, 175, 55, 0.4)',
+                          boxShadow: isDisco ? '0 0 12px rgba(251, 191, 36, 0.3)' : 'none',
+                        }}
+                        animate={isDisco ? { borderColor: ['rgba(251, 191, 36, 0.6)', 'rgba(251, 191, 36, 0.9)', 'rgba(251, 191, 36, 0.6)'] } : undefined}
+                        transition={isDisco ? { duration: 2, repeat: Infinity } : undefined}
+                      >
+                        <img src={governorIcon} alt="Governor" className="w-full h-full object-cover" />
+                      </motion.div>
+                      
+                      {/* API status indicator */}
+                      <motion.div
+                        className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2"
+                        style={{ 
+                          backgroundColor: hasApiKey ? '#22C55E' : '#6B7280',
+                          borderColor: isDisco ? 'rgba(45, 35, 20, 0.9)' : 'rgba(30, 30, 30, 0.9)',
+                        }}
+                        animate={hasApiKey ? { scale: [1, 1.2, 1], opacity: [0.8, 1, 0.8] } : undefined}
+                        transition={hasApiKey ? { duration: 2, repeat: Infinity } : undefined}
+                      />
+                    </div>
+                    
+                    {/* Title */}
+                    <div className="flex flex-col items-start">
+                      <span className={`text-[11px] font-sans font-medium leading-tight ${isDisco ? 'text-amber-300' : 'text-pearl/80'}`}>
+                        Governor
+                      </span>
+                      <span className="text-[9px] font-mono text-ash/50 leading-tight">⌘P</span>
+                    </div>
+                  </button>
+                  
+                  {/* Divider with glow */}
+                  <div className="relative h-8 w-px">
+                    <div className={`absolute inset-0 ${isDisco ? 'bg-amber-500/40' : 'bg-white/10'}`} />
+                    {isDisco && (
+                      <motion.div
+                        className="absolute inset-0 bg-amber-400/60 blur-sm"
+                        animate={{ opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    )}
+                  </div>
+                  
+                  {/* Mode toggle */}
+                  <button
+                    onClick={() => useAppStore.getState().toggleAllDisco()}
+                    className={`flex items-center gap-2.5 px-4 py-2 transition-all ${
+                      isDisco ? 'hover:bg-amber-500/15' : 'hover:bg-white/5'
+                    }`}
+                    title="Toggle Disco Mode (⌘D)"
+                  >
+                    {/* Icon with animation */}
+                    <motion.div
+                      animate={isDisco ? { rotate: [0, 10, -10, 0], scale: [1, 1.1, 1] } : undefined}
+                      transition={isDisco ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : undefined}
+                    >
+                      <Sparkles 
+                        className={`w-4 h-4 ${isDisco ? 'text-amber-400' : 'text-ash/40'}`} 
+                        strokeWidth={1.5} 
+                      />
+                    </motion.div>
+                    
+                    {/* Mode label */}
+                    <div className="flex flex-col items-start">
+                      <AnimatePresence mode="wait">
+                        <motion.span
+                          key={isDisco ? 'disco' : 'normal'}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 4 }}
+                          className={`text-xs font-sans font-medium tracking-wide ${
+                            isDisco ? 'text-amber-400' : 'text-ash/60'
+                          }`}
+                        >
+                          {isDisco ? 'DISCO' : 'Normal'}
+                        </motion.span>
+                      </AnimatePresence>
+                      <span className="text-[9px] font-mono text-ash/40">⌘D</span>
+                    </div>
+                  </button>
+                </motion.div>
+              </div>
             );
           })()}
           
-          {/* Report button - simplified */}
-          <button
-            onClick={onOpenReport}
-            className="p-2 rounded-lg text-ash/50 hover:text-pearl hover:bg-smoke/20 transition-all cursor-pointer"
-            title="Governor Report (⌘G)"
-          >
-            <ShieldCheck className="w-4 h-4" strokeWidth={1.5} />
-          </button>
           
           {/* Theme toggle */}
           <ThemeToggle />

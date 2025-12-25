@@ -51,8 +51,8 @@ interface AppState {
   setIsLoading: (loading: boolean) => void;
   thinkingAgent: AgentType | 'system' | null;
   setThinkingAgent: (agent: AgentType | 'system' | null) => void;
-  thinkingPhase: 'routing' | 'thinking';
-  setThinkingPhase: (phase: 'routing' | 'thinking') => void;
+  thinkingPhase: 'routing' | 'thinking' | 'debating';
+  setThinkingPhase: (phase: 'routing' | 'thinking' | 'debating') => void;
   
   // Error
   error: string | null;
@@ -118,18 +118,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleAgentMode: (agent) => set((state) => {
     const currentMode = state.agentModes[agent];
     const activeCount = Object.values(state.agentModes).filter(m => m !== 'off').length;
+    const isDiscoActive = Object.values(state.agentModes).some(m => m === 'disco');
     
-    // Cycle: off -> on -> disco -> off
+    // Toggle: off <-> on (or off <-> disco if disco mode is active)
     // But prevent turning off if it's the last active agent
     let nextMode: AgentMode;
     if (currentMode === 'off') {
-      nextMode = 'on';
-    } else if (currentMode === 'on') {
-      nextMode = 'disco';
+      // Turn on - use disco if disco mode is globally active
+      nextMode = isDiscoActive ? 'disco' : 'on';
     } else {
-      // disco -> off, but prevent if it's the last active agent
+      // Turn off, but prevent if it's the last active agent
       if (activeCount <= 1) {
-        nextMode = 'on'; // Can't turn off the last agent, cycle back to on
+        return state; // Can't turn off the last agent
       } else {
         nextMode = 'off';
       }

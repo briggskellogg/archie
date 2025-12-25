@@ -1,23 +1,65 @@
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { AgentType } from '../types';
 import { AGENTS, DISCO_AGENTS, GOVERNOR } from '../constants/agents';
 
+// Cutesy, witty synonyms for thinking
+const THINKING_WORDS = [
+  'pondering',
+  'noodling',
+  'meandering',
+  'musing',
+  'mulling',
+  'chewing on it',
+  'percolating',
+  'simmering',
+  'brewing',
+  'stewing',
+  'daydreaming',
+  'wondering',
+  'contemplating',
+  'ruminating',
+  'puzzling',
+  'marinating',
+];
+
 interface ThinkingIndicatorProps {
   agent: AgentType | 'system' | null;
-  phase: 'routing' | 'thinking';
+  phase: 'routing' | 'thinking' | 'debating';
   isDisco?: boolean;
+  debateRound?: number;
 }
 
-export function ThinkingIndicator({ agent, phase, isDisco = false }: ThinkingIndicatorProps) {
+export function ThinkingIndicator({ agent, phase, isDisco = false, debateRound = 0 }: ThinkingIndicatorProps) {
+  const [wordIndex, setWordIndex] = useState(() => Math.floor(Math.random() * THINKING_WORDS.length));
+  
+  // Rotate through words every 2 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWordIndex(prev => (prev + 1) % THINKING_WORDS.length);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+  
   // During routing phase, show Governor; during thinking phase, show the agent
   const isRouting = phase === 'routing';
+  const isDebating = phase === 'debating';
   const agentConfig = isDisco ? DISCO_AGENTS : AGENTS;
+  
   const getAgentConfig = () => {
     if (isRouting || !agent || agent === 'system') return GOVERNOR;
     return agentConfig[agent];
   };
+  
   const config = getAgentConfig();
-  const statusText = isRouting ? 'routing...' : 'is thinking...';
+  const currentWord = THINKING_WORDS[wordIndex];
+  
+  // Status text varies by phase
+  const getStatusText = () => {
+    if (isRouting) return 'routing...';
+    if (isDebating) return `debating (round ${debateRound})...`;
+    return `${currentWord}...`;
+  };
   
   return (
     <motion.div
@@ -54,7 +96,7 @@ export function ThinkingIndicator({ agent, phase, isDisco = false }: ThinkingInd
                 scale: [0.8, 1, 0.8],
               }}
               transition={{
-                duration: isRouting ? 0.6 : 1,
+                duration: isRouting ? 0.6 : isDebating ? 0.5 : 1,
                 repeat: Infinity,
                 delay: i * 0.15,
                 ease: 'easeInOut',
@@ -64,10 +106,21 @@ export function ThinkingIndicator({ agent, phase, isDisco = false }: ThinkingInd
         </div>
       </div>
       
-      {/* Status text below */}
-      <div className="text-[10px] text-ash/40 mt-0.5 font-mono ml-10">
+      {/* Status text below with rotating word */}
+      <div className="text-[10px] text-ash/40 mt-0.5 font-mono ml-10 flex items-center gap-1">
         <span style={{ color: config.color }}>{config.name}</span>
-        <span className="ml-1">{statusText}</span>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={currentWord}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2 }}
+            className="inline-block"
+          >
+            {getStatusText()}
+          </motion.span>
+        </AnimatePresence>
         {isRouting && agent && agent !== 'system' && (
           <>
             <span className="mx-1">→</span>

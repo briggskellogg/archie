@@ -1545,6 +1545,17 @@ pub struct AgentThought {
     pub name: String,       // Display name: "Snap"/"Swarm", etc.
     pub content: String,    // The thought itself (1-3 sentences)
     pub is_disco: bool,     // Which personality was used
+    #[serde(default)]
+    pub round: u8,          // Which round of thought (0 = initial, 1+ = debate rounds)
+}
+
+/// Routing decision - determines how agents should participate
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThinkingPlan {
+    pub agents_to_engage: Vec<String>,  // Which agents should think initially
+    pub should_debate: bool,             // Whether agents should dialogue
+    pub max_rounds: u8,                  // Maximum debate rounds (1-5)
+    pub reasoning: String,               // Why this plan was chosen
 }
 
 /// Governor's complete response - thoughts + synthesis
@@ -1664,10 +1675,186 @@ Rules:
             name: agent_name.to_string(),
             content,
             is_disco,
+            round: 0,
         })
     }
     
-    /// Collect thoughts from all active agents in parallel
+    /// Route the message to determine how agents should engage
+    /// Uses a cheap/fast model to make routing decisions
+    pub async fn plan_thinking(
+        &self,
+        user_message: &str,
+        _conversation_history: &[Message],
+        active_agents: &[String],
+    ) -> Result<ThinkingPlan, Box<dyn Error + Send + Sync>> {
+        // Simple heuristic-based routing (can be upgraded to LLM-based later)
+        let message_len = user_message.len();
+        let word_count = user_message.split_whitespace().count();
+        let has_question_mark = user_message.contains('?');
+        let is_complex = word_count > 20 || message_len > 150;
+        let is_philosophical = user_message.to_lowercase().contains("why") ||
+            user_message.to_lowercase().contains("meaning") ||
+            user_message.to_lowercase().contains("think") ||
+            user_message.to_lowercase().contains("feel");
+        let is_practical = user_message.to_lowercase().contains("how") ||
+            user_message.to_lowercase().contains("should") ||
+            user_message.to_lowercase().contains("best way");
+        let is_emotional = user_message.to_lowercase().contains("feel") ||
+            user_message.to_lowercase().contains("upset") ||
+            user_message.to_lowercase().contains("happy") ||
+            user_message.to_lowercase().contains("worried");
+        
+        // Determine which agents to engage
+        let agents_to_engage: Vec<String> = if active_agents.len() == 1 {
+            // Only one agent active, use it
+            active_agents.to_vec()
+        } else if is_complex && is_philosophical {
+            // Complex philosophical = all agents
+            active_agents.to_vec()
+        } else if is_practical && !is_emotional {
+            // Practical questions = instinct + logic
+            active_agents.iter()
+                .filter(|a| *a == "instinct" || *a == "logic")
+                .cloned()
+                .collect()
+        } else if is_emotional && !is_practical {
+            // Emotional = instinct + psyche
+            active_agents.iter()
+                .filter(|a| *a == "instinct" || *a == "psyche")
+                .cloned()
+                .collect()
+        } else if word_count < 5 && !has_question_mark {
+            // Very short statement = just instinct (gut reaction)
+            active_agents.iter()
+                .filter(|a| *a == "instinct")
+                .cloned()
+                .collect()
+        } else {
+            // Default: all active agents
+            active_agents.to_vec()
+        };
+        
+        // Ensure at least one agent
+        let agents_to_engage = if agents_to_engage.is_empty() {
+            active_agents.get(0).cloned().into_iter().collect()
+        } else {
+            agents_to_engage
+        };
+        
+        // Determine if debate is needed
+        let should_debate = agents_to_engage.len() > 1 && (
+            is_complex ||
+            is_philosophical ||
+            (has_question_mark && word_count > 10)
+        );
+        
+        // Determine debate rounds
+        let max_rounds = if should_debate {
+            if is_complex && is_philosophical { 3 }
+            else if is_complex || is_philosophical { 2 }
+            else { 1 }
+        } else {
+            1
+        };
+        
+        let reasoning = format!(
+            "Message analysis: {} words, complex={}, philosophical={}, practical={}, emotional={}. Engaging {} agent(s), {} rounds.",
+            word_count, is_complex, is_philosophical, is_practical, is_emotional,
+            agents_to_engage.len(), max_rounds
+        );
+        
+        logging::log_routing(None, &format!("[V2 ROUTING] {}", reasoning));
+        
+        Ok(ThinkingPlan {
+            agents_to_engage,
+            should_debate,
+            max_rounds,
+            reasoning,
+        })
+    }
+    
+    /// Get a debate response from an agent reacting to prior thoughts
+    pub async fn get_debate_thought(
+        &self,
+        agent: Agent,
+        user_message: &str,
+        prior_thoughts: &[AgentThought],
+        round: u8,
+        is_disco: bool,
+        user_profile: Option<&UserProfileSummary>,
+    ) -> Result<AgentThought, Box<dyn Error + Send + Sync>> {
+        let (agent_name, base_persona) = if is_disco {
+            match agent {
+                Agent::Instinct => ("Swarm", "You are SWARM - raw, primal instinct. Trust gut reactions."),
+                Agent::Logic => ("Spin", "You are SPIN - cold, analytical clarity. See patterns others miss."),
+                Agent::Psyche => ("Storm", "You are STORM - deep emotional truth. See what people really feel."),
+            }
+        } else {
+            match agent {
+                Agent::Instinct => ("Snap", "You are Snap - quick intuition and gut wisdom."),
+                Agent::Logic => ("Dot", "You are Dot - clear analytical thinking."),
+                Agent::Psyche => ("Puff", "You are Puff - emotional awareness and depth."),
+            }
+        };
+        
+        // Format prior thoughts for context
+        let prior_context = prior_thoughts.iter()
+            .map(|t| format!("[{}]: {}", t.name, t.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        // Profile context
+        let profile_context = if let Some(profile) = user_profile {
+            let mut parts = Vec::new();
+            if let Some(ref style) = profile.communication_style {
+                parts.push(format!("Communication style: {}", style));
+            }
+            if !parts.is_empty() { format!("\nUser context: {}", parts.join(". ")) } else { String::new() }
+        } else {
+            String::new()
+        };
+        
+        let system_prompt = format!(
+            r#"{base_persona}
+{profile_context}
+
+This is debate round {round}. You've heard these perspectives:
+{prior_context}
+
+Your task:
+- REACT to what others said - agree, disagree, add nuance
+- 1-2 sentences MAXIMUM
+- Don't repeat what's been said
+- Bring NEW insight or sharpen the discussion
+- It's okay to say "I agree with X, but..." or "Actually, X missed..."
+- Be direct and specific"#,
+            round = round + 1
+        );
+        
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt,
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: user_message.to_string(),
+            },
+        ];
+        
+        let temperature = if is_disco { 0.7 } else { 0.5 };
+        let content = self.openai_client.chat_completion(messages, temperature, Some(80)).await?;
+        
+        Ok(AgentThought {
+            agent: agent.as_str().to_string(),
+            name: agent_name.to_string(),
+            content,
+            is_disco,
+            round,
+        })
+    }
+    
+    /// Collect thoughts with intelligent routing and optional debate
     pub async fn collect_thoughts(
         &self,
         user_message: &str,
@@ -1676,24 +1863,87 @@ Rules:
         disco_agents: &[String],
         user_profile: Option<&UserProfileSummary>,
     ) -> Result<Vec<AgentThought>, Box<dyn Error + Send + Sync>> {
-        let mut thoughts = Vec::new();
+        // Step 1: Plan how agents should engage
+        let plan = self.plan_thinking(user_message, conversation_history, active_agents).await?;
         
-        // For now, collect sequentially (can be parallelized with tokio::join! later)
-        for agent_str in active_agents {
+        let mut all_thoughts: Vec<AgentThought> = Vec::new();
+        
+        // Step 2: Initial round of thoughts from selected agents
+        for agent_str in &plan.agents_to_engage {
             if let Some(agent) = Agent::from_str(agent_str) {
                 let is_disco = disco_agents.contains(agent_str);
-                let thought = self.get_agent_thought(
+                let mut thought = self.get_agent_thought(
                     agent,
                     user_message,
                     conversation_history,
                     is_disco,
                     user_profile,
                 ).await?;
-                thoughts.push(thought);
+                thought.round = 0;
+                all_thoughts.push(thought);
             }
         }
         
-        Ok(thoughts)
+        // Step 3: Debate rounds if planned
+        if plan.should_debate && plan.agents_to_engage.len() > 1 {
+            // Track how many times each agent has spoken (max 2 per agent)
+            let mut agent_speak_count: std::collections::HashMap<String, u8> = 
+                plan.agents_to_engage.iter().map(|a| (a.clone(), 1)).collect();
+            
+            for round in 1..plan.max_rounds {
+                // Pick agents who haven't spoken twice yet
+                let eligible_agents: Vec<String> = plan.agents_to_engage.iter()
+                    .filter(|a| *agent_speak_count.get(*a).unwrap_or(&0) < 2)
+                    .cloned()
+                    .collect();
+                
+                if eligible_agents.is_empty() {
+                    break;
+                }
+                
+                // In debate, not everyone needs to speak each round
+                // Alternate or have 1-2 agents respond per round
+                let speakers_this_round: Vec<String> = if eligible_agents.len() <= 2 {
+                    eligible_agents
+                } else {
+                    // Pick 2 random agents for this round
+                    let mut shuffled = eligible_agents.clone();
+                    use rand::seq::SliceRandom;
+                    shuffled.shuffle(&mut rand::rng());
+                    shuffled.into_iter().take(2).collect()
+                };
+                
+                for agent_str in &speakers_this_round {
+                    if let Some(agent) = Agent::from_str(agent_str) {
+                        let is_disco = disco_agents.contains(agent_str);
+                        let thought = self.get_debate_thought(
+                            agent,
+                            user_message,
+                            &all_thoughts,
+                            round,
+                            is_disco,
+                            user_profile,
+                        ).await?;
+                        all_thoughts.push(thought);
+                        *agent_speak_count.entry(agent_str.clone()).or_insert(0) += 1;
+                    }
+                }
+                
+                logging::log_routing(None, &format!(
+                    "[V2 DEBATE] Round {} complete: {} speakers",
+                    round + 1,
+                    speakers_this_round.len()
+                ));
+            }
+        }
+        
+        logging::log_routing(None, &format!(
+            "[V2] Total thoughts collected: {}, agents: {:?}",
+            all_thoughts.len(),
+            all_thoughts.iter().map(|t| format!("{}(r{})", t.name, t.round)).collect::<Vec<_>>()
+        ));
+        
+        Ok(all_thoughts)
     }
     
     /// Governor synthesizes thoughts into a unified response
