@@ -28,6 +28,7 @@ interface AppState {
   agentModes: AgentModeState;
   toggleAgentMode: (agent: AgentType) => void;
   toggleAllDisco: () => void;
+  toggleAllAgents: () => void; // Toggle all agents on/off together
   getActiveAgentsList: () => AgentType[];
   getDiscoAgentsList: () => AgentType[];
   isAgentActive: (agent: AgentType) => boolean;
@@ -161,6 +162,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           instinct: state.agentModes.instinct !== 'off' ? 'disco' : 'off',
           logic: state.agentModes.logic !== 'off' ? 'disco' : 'off',
           psyche: state.agentModes.psyche !== 'off' ? 'disco' : 'off',
+        },
+      };
+    }
+  }),
+  
+  toggleAllAgents: () => set((state) => {
+    const anyActive = Object.values(state.agentModes).some(m => m !== 'off');
+    
+    if (anyActive) {
+      // Turn all agents off
+      return {
+        agentModes: {
+          instinct: 'off',
+          logic: 'off',
+          psyche: 'off',
+        },
+      };
+    } else {
+      // Turn all agents on
+      return {
+        agentModes: {
+          instinct: 'on',
+          logic: 'on',
+          psyche: 'on',
         },
       };
     }
