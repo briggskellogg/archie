@@ -323,17 +323,22 @@ async fn get_conversation_opener() -> Result<ConversationOpenerResult, String> {
     
     let recent = db::get_recent_conversations(5).map_err(|e| e.to_string())?;
     
-    // Get active persona profile to inform the greeting
-    let active_profile = db::get_active_persona_profile().map_err(|e| e.to_string())?;
-    let active_trait = active_profile.map(|p| p.dominant_trait).unwrap_or_else(|| "logic".to_string());
+    // Determine dominant trait from user weights
+    let dominant_trait = if profile.logic_weight >= profile.instinct_weight && profile.logic_weight >= profile.psyche_weight {
+        "logic"
+    } else if profile.instinct_weight >= profile.psyche_weight {
+        "instinct"
+    } else {
+        "psyche"
+    };
     
-    // The dominant agent greets the user (using Anthropic/Claude)
-    let content = generate_governor_greeting(&anthropic_key, &recent, &active_trait)
+    // The Governor greets the user
+    let content = generate_governor_greeting(&anthropic_key, &recent, dominant_trait)
         .await
         .map_err(|e| e.to_string())?;
     
-    // Return the dominant agent as the speaker, not "system"
-    Ok(ConversationOpenerResult { agent: active_trait.clone(), content })
+    // Return Governor as the speaker
+    Ok(ConversationOpenerResult { agent: "governor".to_string(), content })
 }
 
 // ============ Temporal Context for Greetings ============
@@ -533,14 +538,11 @@ async fn generate_governor_greeting(anthropic_key: &str, recent_conversations: &
     let full_context = context_parts.join("\n\n");
     
     // ===== SOPHISTICATED SYSTEM PROMPT =====
-    let agent_name = match active_trait {
-        "instinct" => "Snap",
-        "logic" => "Dot",
-        "psyche" => "Puff",
-        _ => "Dot"
-    };
-    
-    let system_prompt = format!(r#"You are {agent_name}, greeting the user at the start of a new conversation in Intersect.
+    let system_prompt = r#"You are the Governor, greeting the user at the start of a new conversation in Intersect.
+
+## WHO YOU ARE
+
+You are the Governor -- the orchestrating intelligence that coordinates the three agents (Snap, Dot, Puff) and synthesizes their perspectives. You are wise, curious, and present. You speak in your own voice, not through the agents.
 
 ## CRITICAL OUTPUT INSTRUCTION
 
@@ -569,20 +571,16 @@ Examples: "Good to see you back. What brings you?"
 
 ## UNRESOLVED TOPICS
 
-If the last conversation left something unresolved, reference it:
-Examples: "Did you figure out [topic]?" or "Still mulling over [X]?"
+If the last conversation left something unresolved, reference it naturally.
 
-## YOUR PERSONALITY ({agent_name})
+## YOUR PERSONALITY
 
-Channel your profile's voice:
-- INSTINCT (Snap): Direct, action-oriented, raw. "Let's move." "Something pulling at you?"
-- LOGIC (Dot): Analytical, curious, problem-focused. "Got a puzzle?" "What are we solving?"
-- PSYCHE (Puff): Warm, introspective, emotionally attuned. "How are you sitting with things?"
+You're a curious guide. Warm but not effusive. Brief but not curt. You're genuinely interested in what they're working through. Not a therapist, not a productivity tool -- a thoughtful presence.
 
 ## TIME OF DAY COLOR
 
-Late night (9pm-5am): Night owl energy. Early morning (5-9am): Early riser acknowledgment.
-Only mention if relevant.
+Late night (9pm-5am): Night owl acknowledgment. Early morning (5-9am): Early riser energy.
+Only mention if it adds something.
 
 ## RULES
 
@@ -591,7 +589,7 @@ Only mention if relevant.
 - Warm and familiar, never robotic
 - Use their name if you know it (but not always)
 - When using dashes: ALWAYS " -- " (double dashes with spaces)
-- NO meta-commentary, explanations, or quotation marks around your output"#);
+- NO meta-commentary, explanations, or quotation marks around your output"#.to_string();
 
     let client = AnthropicClient::new(anthropic_key);
     let messages = vec![
