@@ -93,6 +93,11 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-2`}
     >
+      {/* V2: Agents speak first as thoughts, then Governor synthesizes */}
+      {isGovernor && message.thoughts && message.thoughts.length > 0 && (
+        <ThoughtsContainer thoughts={message.thoughts} />
+      )}
+      
       {/* Bubble row - avatar aligned with name tag */}
       <div className={`flex gap-2 items-start ${isUser ? 'flex-row-reverse' : ''}`}>
         {/* Agent avatar - aligned with name tag (slight offset from top) */}
@@ -186,11 +191,6 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
           minute: '2-digit' 
         })}
       </div>
-      
-      {/* V2: Governor speaks first, then show agent thoughts below */}
-      {isGovernor && message.thoughts && message.thoughts.length > 0 && !isTyping && (
-        <ThoughtsContainer thoughts={message.thoughts} />
-      )}
     </motion.div>
   );
 }

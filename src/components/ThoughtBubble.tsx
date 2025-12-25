@@ -95,7 +95,7 @@ export function ThoughtBubble({ agent, name, content, isDisco, index }: ThoughtB
   );
 }
 
-// Container for multiple thoughts (displayed below Governor's response)
+// Container for multiple thoughts (displayed BEFORE Governor's response)
 interface ThoughtsContainerProps {
   thoughts: Array<{
     agent: string;
@@ -110,10 +110,10 @@ export function ThoughtsContainer({ thoughts }: ThoughtsContainerProps) {
   
   return (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      transition={{ duration: 0.3, delay: 0.5 }} // Delay to appear after Governor finishes typing
-      className="mt-3 ml-10 pl-3 border-l-2 border-smoke/20"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+      className="mb-3 ml-10 pl-3 border-l-2 border-smoke/20"
     >
       <div className="text-[9px] text-ash/40 font-mono uppercase tracking-wider mb-2">
         Internal Council
