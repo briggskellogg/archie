@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Message, UserProfile, PersonaProfile, Conversation, AgentType, AgentMode, DebateMode } from '../types';
+import { Message, UserProfile, Conversation, AgentType, AgentMode, DebateMode } from '../types';
 
 export type Theme = 'light' | 'dark' | 'system';
 
@@ -14,13 +14,7 @@ interface AppState {
   userProfile: UserProfile | null;
   setUserProfile: (profile: UserProfile | null) => void;
   
-  // Active persona profile (multi-profile system)
-  activePersonaProfile: PersonaProfile | null;
-  setActivePersonaProfile: (profile: PersonaProfile | null) => void;
-  allPersonaProfiles: PersonaProfile[];
-  setAllPersonaProfiles: (profiles: PersonaProfile[]) => void;
-  
-  // Current conversation (includes isDisco for conversation-level disco mode)
+// Current conversation (includes isDisco for conversation-level disco mode)
   currentConversation: Conversation | null;
   setCurrentConversation: (conv: Conversation | null) => void;
   
@@ -100,12 +94,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // User profile (API keys, message count)
   userProfile: null,
   setUserProfile: (profile) => set({ userProfile: profile }),
-  
-  // Active persona profile (multi-profile system)
-  activePersonaProfile: null,
-  setActivePersonaProfile: (profile) => set({ activePersonaProfile: profile }),
-  allPersonaProfiles: [],
-  setAllPersonaProfiles: (profiles) => set({ allPersonaProfiles: profiles }),
   
   // Current conversation
   currentConversation: null,

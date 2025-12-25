@@ -3,9 +3,9 @@ import { motion } from 'framer-motion';
 import { useAppStore } from './store';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { ChatWindow } from './components/ChatWindow';
-import { Settings } from './components/Settings';
+import { GovernorModal } from './components/GovernorModal';
 import { ReportModal } from './components/ReportModal';
-import { initApp, getUserProfile, getActivePersonaProfile, InitResult } from './hooks/useTauri';
+import { initApp, getUserProfile, InitResult } from './hooks/useTauri';
 import { AGENTS } from './constants/agents';
 
 function App() {
@@ -13,7 +13,6 @@ function App() {
     setUserProfile,
     isSettingsOpen,
     setSettingsOpen,
-    setActivePersonaProfile,
   } = useAppStore();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -45,12 +44,6 @@ function App() {
         // Check if BOTH API keys are needed (require OpenAI AND Anthropic)
         if (!profile.apiKey || !profile.anthropicKey) {
           setNeedsApiKey(true);
-        } else {
-          // Load active persona profile (3 profiles are auto-created on init)
-          const activePersona = await getActivePersonaProfile();
-          if (activePersona) {
-            setActivePersonaProfile(activePersona);
-          }
         }
       } catch (err) {
         console.error('Failed to initialize:', err);
@@ -60,7 +53,7 @@ function App() {
       }
     }
     init();
-  }, [setUserProfile, setActivePersonaProfile]);
+  }, [setUserProfile]);
 
   // Handle API key setup complete - only close if BOTH keys are present
   const handleApiKeyComplete = async () => {
@@ -70,12 +63,6 @@ function App() {
       // Only close modal if both keys are now present
       if (profile.apiKey && profile.anthropicKey) {
         setNeedsApiKey(false);
-        
-        // Load active persona profile (3 profiles are auto-created on init)
-        const activePersona = await getActivePersonaProfile();
-        if (activePersona) {
-          setActivePersonaProfile(activePersona);
-        }
       }
     } catch (err) {
       console.error('Failed to get profile:', err);
@@ -139,7 +126,7 @@ function App() {
         onComplete={handleApiKeyComplete} 
       />
 
-      <Settings
+      <GovernorModal
         isOpen={isSettingsOpen}
         onClose={() => setSettingsOpen(false)}
       />

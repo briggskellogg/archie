@@ -258,47 +258,10 @@ fn remove_anthropic_key() -> Result<(), String> {
     db::clear_anthropic_key().map_err(|e| e.to_string())
 }
 
-// ============ Persona Profiles ============
+// ============ Persona Profiles (Legacy - kept for DB compatibility) ============
 
-#[tauri::command]
-fn create_persona_profile(name: String, dominant_trait: String, secondary_trait: String, is_default: bool) -> Result<db::PersonaProfile, String> {
-    db::create_persona_profile(&name, &dominant_trait, &secondary_trait, is_default).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn get_all_persona_profiles() -> Result<Vec<db::PersonaProfile>, String> {
-    db::get_all_persona_profiles().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn get_active_persona_profile() -> Result<Option<db::PersonaProfile>, String> {
-    db::get_active_persona_profile().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn get_persona_profile_count() -> Result<i64, String> {
-    db::get_persona_profile_count().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn set_active_persona_profile(profile_id: String) -> Result<(), String> {
-    db::set_active_persona_profile(&profile_id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn set_default_persona_profile(profile_id: String) -> Result<(), String> {
-    db::set_default_persona_profile(&profile_id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn update_persona_profile_name(profile_id: String, new_name: String) -> Result<(), String> {
-    db::update_persona_profile_name(&profile_id, &new_name).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn delete_persona_profile(profile_id: String) -> Result<(), String> {
-    db::delete_persona_profile(&profile_id).map_err(|e| e.to_string())
-}
+// Note: Multi-profile system removed in v2.0. Single user profile is now used.
+// DB functions still exist for migration purposes.
 
 // ============ Conversations ============
 
@@ -1750,14 +1713,6 @@ pub fn run() {
             remove_api_key,
             save_anthropic_key,
             remove_anthropic_key,
-            create_persona_profile,
-            get_all_persona_profiles,
-            get_active_persona_profile,
-            get_persona_profile_count,
-            set_active_persona_profile,
-            set_default_persona_profile,
-            update_persona_profile_name,
-            delete_persona_profile,
             create_conversation,
             get_recent_conversations,
             get_conversation_messages,

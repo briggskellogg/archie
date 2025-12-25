@@ -6,7 +6,6 @@ import { confirm } from '@tauri-apps/plugin-dialog';
 import { BotMessageSquare, ShieldCheck, X, Minus, Square, Mic, Sparkles } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import { ProfileSwitcher } from './ProfileSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 import { useAppStore } from '../store';
 import { Message, AgentType, DebateMode } from '../types';
@@ -61,13 +60,13 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     setUserProfile,
   } = useAppStore();
   
-  // Count active agents for Governor logic (on or disco = active)
-  const activeCount = Object.values(agentModes).filter(m => m !== 'off').length;
+const { elevenLabsApiKey, isSettingsOpen, useGovernorMode } = useAppStore();
   
-  const { activePersonaProfile, elevenLabsApiKey, isSettingsOpen, useGovernorMode } = useAppStore();
-  
-  // Get dominant trait from active persona profile
-  const dominantAgent: AgentType = activePersonaProfile?.dominantTrait || 'logic';
+  // Get dominant trait from user profile (based on highest weight)
+  const dominantAgent: AgentType = userProfile 
+    ? (userProfile.logicWeight >= userProfile.instinctWeight && userProfile.logicWeight >= userProfile.psycheWeight ? 'logic'
+       : userProfile.instinctWeight >= userProfile.psycheWeight ? 'instinct' : 'psyche')
+    : 'logic';
   
   const [inputValue, setInputValue] = useState('');
   const [governorNotification, setGovernorNotification] = useState<{
@@ -140,15 +139,6 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
     }
   }, [transcript, clearTranscript]);
 
-  // Reset initialization when profile changes
-  const prevProfileId = useRef<string | null>(null);
-  useEffect(() => {
-    if (activePersonaProfile?.id && prevProfileId.current && prevProfileId.current !== activePersonaProfile.id) {
-      // Profile changed - allow re-initialization
-      hasInitialized.current = false;
-    }
-    prevProfileId.current = activePersonaProfile?.id || null;
-  }, [activePersonaProfile?.id]);
 
   // Initialize conversation when API key is available or profile changes
   useEffect(() => {
@@ -1120,38 +1110,49 @@ export function ChatWindow({ onOpenSettings, onOpenReport, recoveryNeeded, onRec
 
         {/* Right controls */}
         <div className="flex items-center gap-3 justify-end relative z-10">
-          {/* Profile Switcher - opens profile modal */}
-          <ProfileSwitcher onOpenProfileModal={onOpenSettings} />
-          
-          {/* Governor - opens report modal */}
+          {/* Governor icon with disco indicator - opens settings/governor modal */}
           <button
-            onClick={onOpenReport}
+            onClick={onOpenSettings}
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-smoke/20 transition-all cursor-pointer group/governor"
-            title="The Governor (⌘G)"
+            title="Governor Settings (⌘P)"
           >
-            {/* Governor icon - round with flashing yellow border when routing */}
+            {/* Governor icon - with disco glow when active */}
             <div className="relative w-6 h-6">
-              {/* Animated border ring - only this pulses */}
-              {activeCount > 1 && (
-                <div 
-                  className="absolute inset-[-2px] rounded-full"
+              {/* Disco glow when any agent is in disco mode */}
+              {hasAnyDiscoAgent() && (
+                <motion.div 
+                  className="absolute inset-[-3px] rounded-full"
                   style={{ 
-                    border: '1.5px solid #EAB308',
-                    animation: 'border-pulse 2s ease-in-out infinite',
+                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.4), rgba(249, 115, 22, 0.4))',
                   }}
+                  animate={{ 
+                    opacity: [0.5, 0.8, 0.5],
+                    scale: [1, 1.05, 1],
+                  }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                 />
               )}
-              {/* Static border when not routing */}
-              {activeCount <= 1 && (
+              {/* Static border when not in disco */}
+              {!hasAnyDiscoAgent() && (
                 <div 
                   className="absolute inset-[-2px] rounded-full border border-ash/30"
                 />
               )}
               {/* Icon container */}
-              <div className="w-6 h-6 rounded-full overflow-hidden">
+              <div className="w-6 h-6 rounded-full overflow-hidden relative z-10">
                 <img src={governorIcon} alt="Governor" className="w-full h-full object-cover" />
               </div>
             </div>
+            <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘P</kbd>
+          </button>
+          
+          {/* Report button */}
+          <button
+            onClick={onOpenReport}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-ash/60 hover:text-pearl hover:bg-smoke/20 transition-all cursor-pointer"
+            title="Governor Report (⌘G)"
+          >
+            <ShieldCheck className="w-4 h-4" strokeWidth={1.5} />
             <kbd className="p-1 bg-smoke/30 rounded text-[10px] font-mono text-ash/60 border border-smoke/40 leading-none aspect-square flex items-center justify-center">⌘G</kbd>
           </button>
           

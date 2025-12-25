@@ -12,7 +12,7 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, isLatest: _isLatest }: MessageBubbleProps) {
-  const { activePersonaProfile } = useAppStore();
+  const { userProfile } = useAppStore();
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isGovernor = message.role === 'governor';
@@ -79,8 +79,11 @@ export function MessageBubble({ message, isLatest: _isLatest }: MessageBubblePro
     return () => clearInterval(typingInterval);
   }, [message.id, message.content, isUser, message.role]);
   
-  // Get user's dominant agent from active persona profile for their profile photo
-  const dominantAgent: AgentType = activePersonaProfile?.dominantTrait || 'logic';
+  // Get user's dominant agent from user profile weights for their profile photo
+  const dominantAgent: AgentType = userProfile 
+    ? (userProfile.logicWeight >= userProfile.instinctWeight && userProfile.logicWeight >= userProfile.psycheWeight ? 'logic'
+       : userProfile.instinctWeight >= userProfile.psycheWeight ? 'instinct' : 'psyche')
+    : 'logic';
   const userAvatar = USER_PROFILES[dominantAgent];
   
   return (
