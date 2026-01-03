@@ -40,7 +40,7 @@ const ARCHETYPES = {
     dominant: 'psyche' as const,
     points: { logic: 3, instinct: 4, psyche: 5 },
     image: sensitiveImage,
-    imagePosition: 'center top',
+    imagePosition: 'center 15%',
     description: 'Emotionally attuned',
   },
   brute: {
@@ -48,7 +48,7 @@ const ARCHETYPES = {
     dominant: 'instinct' as const,
     points: { logic: 2, instinct: 7, psyche: 3 },
     image: bruteImage,
-    imagePosition: 'center top',
+    imagePosition: 'center 17%',
     description: 'Gut-driven action',
   },
 } as const;
