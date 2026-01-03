@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar, Key, Info } from 'lucide-react';
+import { Calendar, Key, Info, ExternalLink } from 'lucide-react';
 import { useAppStore } from '../store';
 import { AGENTS } from '../constants/agents';
 import { 
@@ -32,6 +32,7 @@ const ARCHETYPES = {
     dominant: 'logic' as const,
     points: { logic: 6, instinct: 4, psyche: 2 },
     image: thinkerImage,
+    imagePosition: 'center 20%',
     description: 'Logic-driven analysis',
   },
   sensitive: {
@@ -39,6 +40,7 @@ const ARCHETYPES = {
     dominant: 'psyche' as const,
     points: { logic: 3, instinct: 4, psyche: 5 },
     image: sensitiveImage,
+    imagePosition: 'center 30%',
     description: 'Emotionally attuned',
   },
   brute: {
@@ -46,6 +48,7 @@ const ARCHETYPES = {
     dominant: 'instinct' as const,
     points: { logic: 2, instinct: 7, psyche: 3 },
     image: bruteImage,
+    imagePosition: 'center 35%',
     description: 'Gut-driven action',
   },
 } as const;
@@ -665,7 +668,18 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   
                   {/* Archetypes Section */}
                   <div className="mt-4">
-                    <p className="text-[10px] font-mono text-ash/50 uppercase tracking-wider mb-2">Archetypes</p>
+                    <div className="flex items-center gap-2 mb-2">
+                      <p className="text-[10px] font-mono text-ash/50 uppercase tracking-wider">Archetypes</p>
+                      <a
+                        href="https://www.discoelysium.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-[9px] text-amber-400/70 hover:text-amber-300 font-mono italic transition-colors cursor-pointer"
+                      >
+                        <span>Inspired by Disco Elysium</span>
+                        <ExternalLink className="w-2.5 h-2.5" strokeWidth={1.5} />
+                      </a>
+                    </div>
                     <div className="flex gap-2">
                       {(Object.keys(ARCHETYPES) as Array<keyof typeof ARCHETYPES>).map((key) => {
                         const archetype = ARCHETYPES[key];
@@ -712,7 +726,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                               src={archetype.image} 
                               alt={archetype.name}
                               className="absolute inset-0 w-full h-full object-cover"
-                              style={{ objectPosition: 'center 20%' }}
+                              style={{ objectPosition: archetype.imagePosition }}
                             />
                             {/* Dark overlay for text readability */}
                             <div className={`absolute inset-0 transition-all ${
