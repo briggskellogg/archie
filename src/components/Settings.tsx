@@ -546,35 +546,27 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="fixed right-2 top-2 w-[480px] max-h-[calc(100vh-16px)] bg-obsidian/98 backdrop-blur-xl border border-smoke/40 rounded-2xl z-50 flex flex-col shadow-2xl"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-smoke/30 flex-shrink-0">
-              <div className="inline-flex px-2.5 py-1 rounded-full bg-smoke/20 border border-smoke/40">
-                <h2 className="font-mono text-xs text-pearl font-medium uppercase tracking-wider">PROFILE</h2>
-              </div>
-              {/* ESC button */}
+            {/* Header - Started date and ESC */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-smoke/30 flex-shrink-0">
+              {userProfile && (
+                <div className="flex items-center gap-2 text-[11px] text-ash/70 font-mono">
+                  <Calendar className="w-3.5 h-3.5 text-ash/50" strokeWidth={1.5} />
+                  <span>Started {formatDate(userProfile.createdAt)}</span>
+                </div>
+              )}
               <button
                 onClick={onClose}
-                className="p-1 rounded text-[9px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer aspect-square flex items-center justify-center"
+                className="px-2 py-1 rounded text-[9px] font-mono text-ash bg-smoke/30 hover:bg-smoke/50 border border-smoke/50 transition-colors cursor-pointer flex items-center justify-center"
               >
                 ESC
               </button>
             </div>
 
-            <div className="p-4 space-y-5 flex-1 overflow-y-auto">
+            <div className="p-4 space-y-4 flex-1 overflow-y-auto">
 
               {/* Agent weights - Radar chart */}
               {userProfile && (
                 <section>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 text-[11px] text-ash/70 font-mono">
-                      <Calendar className="w-4 h-4 text-ash/60" strokeWidth={1.5} />
-                      <span>Started on {formatDate(userProfile.createdAt)}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-ash/70 font-mono">
-                      <span className="tabular-nums">{userProfile.totalMessages}</span>
-                      <span className="text-ash/50">messages</span>
-                    </div>
-                  </div>
                   
                   <div 
                     className="rounded-xl p-4 border border-smoke/30 relative overflow-hidden"
