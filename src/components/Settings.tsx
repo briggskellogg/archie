@@ -711,7 +711,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                             <img 
                               src={archetype.image} 
                               alt={archetype.name}
-                              className="absolute inset-0 w-full h-full object-cover"
+                              className="absolute inset-0 w-full h-full object-cover object-top"
                             />
                             {/* Dark overlay for text readability */}
                             <div className={`absolute inset-0 transition-all ${
